@@ -126,21 +126,19 @@ function startApp() {
     initMap();
 }
 
-// Check if already onboarded
+// Always show onboarding splash, pre-select saved provider
 function checkOnboarding() {
     try {
-        if (localStorage.getItem('sr_onboarded') === '1') {
-            const saved = localStorage.getItem('sr_provider') || 'all';
+        const saved = localStorage.getItem('sr_provider') || 'all';
+        if (saved !== 'all') {
+            // Pre-select the saved provider
+            document.querySelectorAll('.provider-option').forEach(o => {
+                o.classList.toggle('selected', o.dataset.provider === saved);
+            });
             selectedProvider = saved;
-            if (saved !== 'all') {
-                activeFilter = saved;
-            }
-            document.getElementById('onboarding').style.display = 'none';
-            initMap();
-            return;
         }
     } catch(e) {}
-    // Show onboarding
+    // Always show onboarding as welcome screen
 }
 
 // ─── Operator Classification ──────────────────────────────────
