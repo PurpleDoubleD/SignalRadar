@@ -49,9 +49,8 @@ let userPosition = null;
 let towers = [];
 let towerIds = new Set();
 let activeFilter = 'all';
-let isSatellite = false; // Start with dark street map — loads faster + more reliable on mobile
-// Start heatmap OFF on mobile to prioritize tile loading
-let isHeatmapOn = !/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+let isSatellite = true; // Satellite is default
+let isHeatmapOn = true; // Heatmap always on — core feature
 let isMeasuring = false;
 let measurePoints = [];
 let measureMarkers = [];
@@ -894,8 +893,8 @@ function initMap() {
         console.warn('Satellite tile failed to load:', error.tile?.src);
     });
     
-    // Default: dark street map (faster, more reliable on mobile)
-    tileLayerStreet.addTo(map);
+    // Default: satellite map
+    tileLayerSat.addTo(map);
     
     clusterGroup = L.markerClusterGroup({
         maxClusterRadius: 50,
@@ -986,14 +985,6 @@ function initMap() {
         document.getElementById('btnSatellite').classList.toggle('active', isSatellite);
     });
     
-    // Heatmap
-    document.getElementById('btnHeatmap').addEventListener('click', () => {
-        isHeatmapOn = !isHeatmapOn;
-        document.getElementById('btnHeatmap').classList.toggle('active');
-        if (isHeatmapOn) generateHeatmap();
-        else if (heatmapLayer) { map.removeLayer(heatmapLayer); heatmapLayer = null; }
-    });
-    
     // Speed Test
     document.getElementById('btnSpeed').addEventListener('click', toggleSpeedPanel);
     
@@ -1030,9 +1021,8 @@ function initMap() {
         });
     });
     
-    // Set initial active states (satellite OFF by default)
-    // btnSatellite stays inactive since we start on street map
-    if (isHeatmapOn) document.getElementById('btnHeatmap').classList.add('active');
+    // Set initial active states
+    document.getElementById('btnSatellite').classList.add('active');
     
     // Apply saved filter
     if (activeFilter !== 'all') {
