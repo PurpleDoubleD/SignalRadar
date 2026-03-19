@@ -49,8 +49,9 @@ let userPosition = null;
 let towers = [];
 let towerIds = new Set();
 let activeFilter = 'all';
-let isSatellite = true;
-let isHeatmapOn = true;
+let isSatellite = false; // Start with dark street map — loads faster + more reliable on mobile
+// Start heatmap OFF on mobile to prioritize tile loading
+let isHeatmapOn = !/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 let isMeasuring = false;
 let measurePoints = [];
 let measureMarkers = [];
@@ -874,14 +875,27 @@ function initMap() {
         maxZoom: 20,
         attribution: '© <a href="https://www.openstreetmap.org/copyright">OSM</a> · <a href="https://carto.com/">CARTO</a>',
         subdomains: 'abcd',
+        errorTileUrl: '',
+        crossOrigin: true,
+        keepBuffer: 4,
     });
     
     tileLayerSat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
         maxZoom: 19,
         attribution: '© Esri',
+        errorTileUrl: '',
+        crossOrigin: true,
+        keepBuffer: 6,
+        updateWhenZooming: false,
+        updateWhenIdle: true,
     });
     
-    tileLayerSat.addTo(map);
+    tileLayerSat.on('tileerror', function(error) {
+        console.warn('Satellite tile failed to load:', error.tile?.src);
+    });
+    
+    // Default: dark street map (faster, more reliable on mobile)
+    tileLayerStreet.addTo(map);
     
     clusterGroup = L.markerClusterGroup({
         maxClusterRadius: 50,
@@ -911,9 +925,17 @@ function initMap() {
         if (loadingTimeout) clearTimeout(loadingTimeout);
         loadingTimeout = setTimeout(() => {
             const zoom = map.getZoom();
-            if (zoom >= 9) loadTowers(map.getBounds().pad(0.3));
-            if (isHeatmapOn && zoom >= 11) generateHeatmap();
-        }, 400);
+            if (zoom >= 9) {
+                loadTowers(map.getBounds().pad(0.3)).then(() => {
+                    // Only generate heatmap after towers loaded + tiles had time to render
+                    if (isHeatmapOn && zoom >= 11) {
+                        setTimeout(() => generateHeatmap(), 800);
+                    }
+                });
+            } else if (isHeatmapOn && zoom >= 11) {
+                setTimeout(() => generateHeatmap(), 800);
+            }
+        }, 500);
     });
     
     // ─── Button handlers ──────────────────────────────────────
@@ -1008,9 +1030,9 @@ function initMap() {
         });
     });
     
-    // Set initial active states
-    document.getElementById('btnSatellite').classList.add('active');
-    document.getElementById('btnHeatmap').classList.add('active');
+    // Set initial active states (satellite OFF by default)
+    // btnSatellite stays inactive since we start on street map
+    if (isHeatmapOn) document.getElementById('btnHeatmap').classList.add('active');
     
     // Apply saved filter
     if (activeFilter !== 'all') {
@@ -1019,9 +1041,11 @@ function initMap() {
         });
     }
     
-    // Initial load
+    // Initial load — delay heatmap to let tiles load first on mobile
     loadTowers(map.getBounds().pad(0.3)).then(() => {
-        if (isHeatmapOn) generateHeatmap();
+        if (isHeatmapOn) {
+            setTimeout(() => generateHeatmap(), 2000);
+        }
     });
     
     locateUser();
