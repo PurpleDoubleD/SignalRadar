@@ -20,24 +20,30 @@
         * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         
         :root {
-            --bg-primary: #0d1117;
-            --bg-secondary: #161b22;
-            --bg-tertiary: #21262d;
-            --border: rgba(108,92,231,0.25);
-            --accent: #6c5ce7;
-            --accent-light: #a29bfe;
-            --text-primary: #e6edf3;
-            --text-secondary: #8b949e;
-            --text-muted: #484f58;
+            --bg-primary: #0a0e1a;
+            --bg-secondary: #121829;
+            --bg-tertiary: #1a2036;
+            --bg-glass: rgba(12,16,30,0.82);
+            --border: rgba(100,140,255,0.15);
+            --border-active: rgba(100,180,255,0.4);
+            --accent: #4f8fff;
+            --accent-light: #7bb5ff;
+            --accent-glow: rgba(79,143,255,0.25);
+            --text-primary: #eaf0f9;
+            --text-secondary: #7e8da0;
+            --text-muted: #454f5f;
             --telekom: #e20074;
             --vodafone: #e60000;
-            --telefonica: #0066cc;
-            --other: #6e7681;
-            --excellent: #2ea043;
-            --good: #56d364;
-            --fair: #d29922;
-            --weak: #e17055;
-            --poor: #f85149;
+            --telefonica: #0077e6;
+            --other: #5a6577;
+            --excellent: #00c853;
+            --good: #69f0ae;
+            --fair: #ffd740;
+            --weak: #ff8a65;
+            --poor: #ff5252;
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
             --safe-top: env(safe-area-inset-top, 0px);
             --safe-bottom: env(safe-area-inset-bottom, 0px);
         }
@@ -67,8 +73,8 @@
             left: 0;
             right: 0;
             z-index: 1000;
-            background: linear-gradient(180deg, rgba(13,17,23,0.96) 0%, rgba(13,17,23,0.8) 80%, rgba(13,17,23,0) 100%);
-            padding: calc(8px + var(--safe-top)) 14px 20px;
+            background: linear-gradient(180deg, rgba(10,14,26,0.95) 0%, rgba(10,14,26,0.7) 80%, transparent 100%);
+            padding: calc(10px + var(--safe-top)) 16px 22px;
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -84,25 +90,23 @@
         }
         
         .app-logo {
-            width: 32px;
-            height: 32px;
-            background: linear-gradient(135deg, var(--accent), var(--accent-light));
-            border-radius: 8px;
+            width: 34px;
+            height: 34px;
+            background: var(--accent);
+            border-radius: var(--radius-sm);
             display: flex;
             align-items: center;
             justify-content: center;
             font-size: 18px;
             flex-shrink: 0;
+            box-shadow: 0 2px 12px var(--accent-glow);
         }
         
         .top-bar h1 {
             font-size: 17px;
             font-weight: 700;
             letter-spacing: -0.3px;
-            background: linear-gradient(135deg, var(--accent), var(--accent-light));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            color: #fff;
         }
         
         .top-bar .coords {
@@ -112,10 +116,12 @@
         }
         
         .tower-counter {
-            background: var(--bg-tertiary);
+            background: var(--bg-glass);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
             border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 4px 12px;
+            border-radius: 20px;
+            padding: 5px 14px;
             font-size: 12px;
             font-weight: 600;
             color: var(--text-secondary);
@@ -151,7 +157,7 @@
             left: -40%;
             width: 40%;
             height: 100%;
-            background: linear-gradient(90deg, transparent, var(--accent), var(--accent-light), var(--accent), transparent);
+            background: linear-gradient(90deg, transparent, var(--accent), #fff, var(--accent), transparent);
             animation: loadSlide 1.2s ease-in-out infinite;
         }
         
@@ -174,23 +180,29 @@
         
         .search-box {
             width: 100%;
-            background: var(--bg-secondary);
+            background: var(--bg-glass);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             border: 1px solid var(--border);
-            border-radius: 12px;
+            border-radius: var(--radius-md);
             padding: 12px 16px;
             font-size: 15px;
             color: var(--text-primary);
             outline: none;
             -webkit-appearance: none;
+            transition: border-color 0.2s;
         }
         
+        .search-box:focus { border-color: var(--accent); }
         .search-box::placeholder { color: var(--text-muted); }
         
         .search-results {
             margin-top: 4px;
-            background: var(--bg-secondary);
+            background: var(--bg-glass);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             border: 1px solid var(--border);
-            border-radius: 12px;
+            border-radius: var(--radius-md);
             max-height: 240px;
             overflow-y: auto;
             display: none;
@@ -227,33 +239,34 @@
         }
         
         .ctrl-btn {
-            width: 42px;
-            height: 42px;
-            border-radius: 12px;
+            width: 44px;
+            height: 44px;
+            border-radius: var(--radius-md);
             border: 1px solid var(--border);
-            background: rgba(13,17,23,0.92);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            color: var(--text-primary);
-            font-size: 17px;
+            background: var(--bg-glass);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            color: var(--text-secondary);
+            font-size: 18px;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            transition: all 0.15s ease;
+            transition: all 0.2s ease;
             -webkit-user-select: none;
             user-select: none;
         }
         
         .ctrl-btn:active {
-            transform: scale(0.92);
-            background: rgba(108,92,231,0.3);
+            transform: scale(0.9);
+            background: var(--accent-glow);
         }
         
         .ctrl-btn.active {
-            background: rgba(108,92,231,0.4);
-            border-color: var(--accent);
-            box-shadow: 0 0 12px rgba(108,92,231,0.3);
+            background: var(--accent);
+            border-color: transparent;
+            color: #fff;
+            box-shadow: 0 2px 16px var(--accent-glow);
         }
         
         /* ─── Bottom panel ─── */
@@ -263,8 +276,8 @@
             left: 0;
             right: 0;
             z-index: 1000;
-            background: linear-gradient(0deg, rgba(13,17,23,0.98) 60%, rgba(13,17,23,0.85) 85%, rgba(13,17,23,0) 100%);
-            padding: 24px 14px calc(12px + var(--safe-bottom));
+            background: linear-gradient(0deg, rgba(10,14,26,0.97) 50%, rgba(10,14,26,0.8) 80%, transparent 100%);
+            padding: 28px 16px calc(12px + var(--safe-bottom));
             pointer-events: none;
         }
         
@@ -273,8 +286,8 @@
         /* Filter chips */
         .filter-row {
             display: flex;
-            gap: 6px;
-            margin-bottom: 10px;
+            gap: 8px;
+            margin-bottom: 12px;
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
             scrollbar-width: none;
@@ -284,30 +297,33 @@
         .filter-row::-webkit-scrollbar { display: none; }
         
         .filter-btn {
-            padding: 5px 12px;
-            border-radius: 16px;
+            padding: 6px 14px;
+            border-radius: 20px;
             border: 1px solid var(--border);
-            background: var(--bg-tertiary);
+            background: var(--bg-glass);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
             color: var(--text-secondary);
             font-size: 12px;
-            font-weight: 500;
+            font-weight: 600;
             cursor: pointer;
-            transition: all 0.15s;
+            transition: all 0.2s;
             white-space: nowrap;
             flex-shrink: 0;
             -webkit-user-select: none;
             user-select: none;
+            letter-spacing: 0.2px;
         }
         
         .filter-btn.active {
-            border-color: var(--accent);
             color: #fff;
+            border-color: transparent;
         }
         
-        .filter-btn.active[data-filter="all"] { background: var(--accent); }
-        .filter-btn.active[data-filter="telefonica"] { background: var(--telefonica); border-color: var(--telefonica); }
-        .filter-btn.active[data-filter="telekom"] { background: var(--telekom); border-color: var(--telekom); }
-        .filter-btn.active[data-filter="vodafone"] { background: var(--vodafone); border-color: var(--vodafone); }
+        .filter-btn.active[data-filter="all"] { background: var(--accent); box-shadow: 0 2px 12px var(--accent-glow); }
+        .filter-btn.active[data-filter="telefonica"] { background: var(--telefonica); box-shadow: 0 2px 12px rgba(0,119,230,0.35); }
+        .filter-btn.active[data-filter="telekom"] { background: var(--telekom); box-shadow: 0 2px 12px rgba(226,0,116,0.35); }
+        .filter-btn.active[data-filter="vodafone"] { background: var(--vodafone); box-shadow: 0 2px 12px rgba(230,0,0,0.35); }
         
         /* Signal meter */
         .signal-meter {
@@ -338,11 +354,11 @@
         .signal-bar:nth-child(4) { height: 19px; }
         .signal-bar:nth-child(5) { height: 26px; }
         
-        .signal-bar.active.excellent { background: var(--excellent); box-shadow: 0 0 6px rgba(46,160,67,0.4); }
-        .signal-bar.active.good { background: var(--good); box-shadow: 0 0 6px rgba(86,211,100,0.3); }
-        .signal-bar.active.fair { background: var(--fair); box-shadow: 0 0 6px rgba(210,153,34,0.3); }
-        .signal-bar.active.weak { background: var(--weak); box-shadow: 0 0 6px rgba(225,112,85,0.3); }
-        .signal-bar.active.poor { background: var(--poor); box-shadow: 0 0 6px rgba(248,81,73,0.3); }
+        .signal-bar.active.excellent { background: var(--excellent); box-shadow: 0 0 8px rgba(0,200,83,0.5); }
+        .signal-bar.active.good { background: var(--good); box-shadow: 0 0 8px rgba(105,240,174,0.4); }
+        .signal-bar.active.fair { background: var(--fair); box-shadow: 0 0 8px rgba(255,215,64,0.4); }
+        .signal-bar.active.weak { background: var(--weak); box-shadow: 0 0 8px rgba(255,138,101,0.4); }
+        .signal-bar.active.poor { background: var(--poor); box-shadow: 0 0 8px rgba(255,82,82,0.4); }
         
         .signal-text { flex: 1; min-width: 0; }
         
@@ -426,14 +442,15 @@
         
         /* Cluster markers */
         .marker-cluster-small, .marker-cluster-medium, .marker-cluster-large {
-            background: rgba(108,92,231,0.25) !important;
+            background: var(--accent-glow) !important;
         }
         
         .marker-cluster-small div, .marker-cluster-medium div, .marker-cluster-large div {
             background: var(--accent) !important;
             color: #fff !important;
-            font-weight: 600 !important;
-            font-size: 12px !important;
+            font-weight: 700 !important;
+            font-size: 11px !important;
+            box-shadow: 0 2px 8px var(--accent-glow) !important;
         }
         
         /* User location marker */
@@ -456,9 +473,9 @@
         .leaflet-popup-content-wrapper {
             background: var(--bg-secondary) !important;
             color: var(--text-primary) !important;
-            border-radius: 12px !important;
+            border-radius: var(--radius-lg) !important;
             border: 1px solid var(--border) !important;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.4) !important;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.5) !important;
         }
         
         .leaflet-popup-tip { background: var(--bg-secondary) !important; }
@@ -540,20 +557,19 @@
         .info-content {
             background: var(--bg-secondary);
             border: 1px solid var(--border);
-            border-radius: 16px;
+            border-radius: var(--radius-lg);
             padding: 24px;
             max-width: 340px;
             width: 90%;
             max-height: 80vh;
             overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6);
         }
         
         .info-content h2 {
             font-size: 18px;
             margin-bottom: 12px;
-            background: linear-gradient(135deg, var(--accent), var(--accent-light));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+            color: #fff;
         }
         
         .info-content p {
@@ -565,16 +581,20 @@
         
         .info-content .close-btn {
             width: 100%;
-            padding: 10px;
+            padding: 12px;
             border: none;
-            border-radius: 10px;
+            border-radius: var(--radius-md);
             background: var(--accent);
             color: #fff;
             font-size: 14px;
             font-weight: 600;
             cursor: pointer;
-            margin-top: 8px;
+            margin-top: 12px;
+            box-shadow: 0 4px 16px var(--accent-glow);
+            transition: opacity 0.15s;
         }
+        
+        .info-content .close-btn:active { opacity: 0.8; }
         
         /* ─── Toast notifications ─── */
         .toast {
@@ -583,16 +603,20 @@
             left: 50%;
             transform: translateX(-50%) translateY(-20px);
             z-index: 2000;
-            background: var(--bg-tertiary);
+            background: var(--bg-glass);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 8px 16px;
+            border-radius: var(--radius-md);
+            padding: 10px 18px;
             font-size: 13px;
+            font-weight: 500;
             color: var(--text-primary);
             opacity: 0;
             transition: all 0.3s ease;
             pointer-events: none;
             white-space: nowrap;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
         }
         
         .toast.show {
@@ -677,20 +701,19 @@
     <!-- Info Modal -->
     <div class="info-modal" id="infoModal">
         <div class="info-content">
-            <h2>📡 SignalRadar v2.0</h2>
-            <p><strong>Mobilfunk-Abdeckungskarte für Deutschland</strong></p>
-            <p>Zeigt Funkmasten aus OpenStreetMap (Overpass API) und berechnet die Signalstärke mit dem COST 231 Hata-Modell.</p>
+            <h2>📡 SignalRadar v2.1</h2>
+            <p><strong>Mobilfunk-Abdeckungskarte fuer Deutschland</strong></p>
+            <p>Echtzeit-Visualisierung von Funkmasten (OpenStreetMap) mit Signalstaerke-Berechnung via COST 231 Hata-Modell.</p>
             <p><strong>Bedienung:</strong><br>
             🔍 Ort oder PLZ suchen<br>
             📍 GPS-Standort anzeigen<br>
-            🛰️ Satellitenkarte umschalten<br>
-            🌡️ Signal-Heatmap (bei Zoom ≥ 12)<br>
-            📏 Entfernungen messen (2x tippen)<br>
-            Tippe auf die Karte für Signalstärke</p>
-            <p><strong>Filter:</strong> O2/1&1 (Telefónica-Netz), Telekom, Vodafone</p>
-            <p><strong>Hinweis:</strong> 1&1 nutzt das Telefónica/O2-Netz.</p>
-            <p style="font-size:11px;color:var(--text-muted)">Entwickelt von PurpleDoubleD<br>Datenquelle: OpenStreetMap Contributors</p>
-            <button class="close-btn" onclick="document.getElementById('infoModal').classList.remove('open')">Verstanden</button>
+            🛰️ Karte: Satellit / Strasse<br>
+            🌡️ Signal-Heatmap (Zoom 12+)<br>
+            📏 Entfernungen messen<br>
+            Tippe auf die Karte fuer Signalstaerke</p>
+            <p><strong>Netze:</strong> O2/1&1 (Telefonica), Telekom, Vodafone</p>
+            <p style="font-size:11px;color:var(--text-muted);margin-top:12px">Entwickelt von PurpleDoubleD<br>Daten: OpenStreetMap Contributors</p>
+            <button class="close-btn" onclick="document.getElementById('infoModal').classList.remove('open')">OK</button>
         </div>
     </div>
     

@@ -1,5 +1,5 @@
 // ============================================================
-// SignalRadar v2.0 - Mobilfunk-Abdeckungskarte für Deutschland
+// SignalRadar v2.1 - Mobilfunk-Abdeckungskarte für Deutschland
 // by PurpleDoubleD
 // ============================================================
 
@@ -58,8 +58,8 @@ let userPosition = null;
 let towers = [];
 let towerIds = new Set();
 let activeFilter = 'all';
-let isSatellite = false;
-let isHeatmapOn = false;
+let isSatellite = true;
+let isHeatmapOn = true;
 let isMeasuring = false;
 let measurePoints = [];
 let measureMarkers = [];
@@ -708,7 +708,7 @@ function initMap() {
         attribution: '© Esri',
     });
     
-    tileLayerStreet.addTo(map);
+    tileLayerSat.addTo(map);
     
     // Marker cluster group
     clusterGroup = L.markerClusterGroup({
@@ -786,7 +786,7 @@ function initMap() {
     // Locate
     document.getElementById('btnLocate').addEventListener('click', locateUser);
     
-    // Satellite
+    // Satellite toggle (starts as satellite, toggles to street and back)
     document.getElementById('btnSatellite').addEventListener('click', () => {
         isSatellite = !isSatellite;
         if (isSatellite) {
@@ -796,7 +796,7 @@ function initMap() {
             map.removeLayer(tileLayerSat);
             tileLayerStreet.addTo(map);
         }
-        document.getElementById('btnSatellite').classList.toggle('active');
+        document.getElementById('btnSatellite').classList.toggle('active', isSatellite);
     });
     
     // Heatmap
@@ -846,8 +846,15 @@ function initMap() {
         });
     });
     
+    // Mark satellite + heatmap buttons as active on start
+    document.getElementById('btnSatellite').classList.add('active');
+    document.getElementById('btnHeatmap').classList.add('active');
+    
     // Initial load for Viersen area
-    loadTowers(map.getBounds().pad(0.3));
+    loadTowers(map.getBounds().pad(0.3)).then(() => {
+        // Generate heatmap after initial towers loaded
+        if (isHeatmapOn) generateHeatmap();
+    });
     
     // Try to locate user
     locateUser();
