@@ -3,53 +3,71 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SignalRadar</title>
+    <title>SignalRadar — Mobilfunk-Abdeckung DE</title>
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#0d1117">
+    <meta name="theme-color" content="#0a0a0f">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <meta name="description" content="Mobilfunk-Abdeckungskarte für Deutschland. Sendemasten, Signalstärke, Speed Test — Zero Tracking, Made in Germany.">
+    
+    <!-- Inter font for SaaS vibe -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <!-- Leaflet MarkerCluster CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
     
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         
         :root {
-            --bg-primary: #0a0e1a;
-            --bg-secondary: #121829;
-            --bg-tertiary: #1a2036;
-            --bg-glass: rgba(12,16,30,0.82);
-            --border: rgba(100,140,255,0.15);
-            --border-active: rgba(100,180,255,0.4);
-            --accent: #4f8fff;
-            --accent-light: #7bb5ff;
-            --accent-glow: rgba(79,143,255,0.25);
-            --text-primary: #eaf0f9;
-            --text-secondary: #7e8da0;
-            --text-muted: #454f5f;
+            --bg-primary: #0a0a0f;
+            --bg-elevated: #111118;
+            --bg-card: #16161f;
+            --bg-card-hover: #1c1c28;
+            --bg-glass: rgba(16,16,26,0.78);
+            --bg-glass-heavy: rgba(10,10,15,0.92);
+            --border: rgba(255,255,255,0.06);
+            --border-subtle: rgba(255,255,255,0.04);
+            --border-active: rgba(99,102,241,0.4);
+            --accent: #6366f1;
+            --accent-light: #818cf8;
+            --accent-lighter: #a5b4fc;
+            --accent-glow: rgba(99,102,241,0.15);
+            --accent-glow-strong: rgba(99,102,241,0.3);
+            --text-primary: #f1f1f4;
+            --text-secondary: #8b8d9e;
+            --text-tertiary: #555568;
+            --green: #22c55e;
+            --green-light: #4ade80;
+            --yellow: #eab308;
+            --orange: #f97316;
+            --red: #ef4444;
             --telekom: #e20074;
             --vodafone: #e60000;
-            --telefonica: #0077e6;
-            --other: #5a6577;
-            --excellent: #00c853;
-            --good: #69f0ae;
-            --fair: #ffd740;
-            --weak: #ff8a65;
-            --poor: #ff5252;
-            --radius-sm: 8px;
-            --radius-md: 12px;
-            --radius-lg: 16px;
+            --telefonica: #0ea5e9;
+            --other: #6b7280;
+            --radius-xs: 6px;
+            --radius-sm: 10px;
+            --radius-md: 14px;
+            --radius-lg: 20px;
+            --radius-xl: 24px;
+            --radius-full: 9999px;
             --safe-top: env(safe-area-inset-top, 0px);
             --safe-bottom: env(safe-area-inset-bottom, 0px);
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+            --shadow-md: 0 4px 16px rgba(0,0,0,0.3);
+            --shadow-lg: 0 12px 40px rgba(0,0,0,0.4);
+            --shadow-glow: 0 0 30px rgba(99,102,241,0.15);
+            --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         }
         
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
             background: var(--bg-primary);
             color: var(--text-primary);
             overflow: hidden;
@@ -57,6 +75,8 @@
             height: 100dvh;
             width: 100vw;
             touch-action: manipulation;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }
         
         #map {
@@ -66,170 +86,199 @@
             z-index: 1;
         }
         
-        /* ─── Top bar ─── */
-        .top-bar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 1000;
-            background: linear-gradient(180deg, rgba(10,14,26,0.95) 0%, rgba(10,14,26,0.7) 80%, transparent 100%);
-            padding: calc(10px + var(--safe-top)) 16px 22px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            pointer-events: none;
-        }
-        
-        .top-bar > * { pointer-events: auto; }
-        
-        .top-bar-left {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .app-logo {
-            width: 34px;
-            height: 34px;
-            background: var(--accent);
-            border-radius: var(--radius-sm);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 18px;
-            flex-shrink: 0;
-            box-shadow: 0 2px 12px var(--accent-glow);
-        }
-        
-        .top-bar h1 {
-            font-size: 17px;
-            font-weight: 700;
-            letter-spacing: -0.3px;
-            color: #fff;
-        }
-        
-        .top-bar .coords {
-            font-size: 11px;
-            color: var(--text-secondary);
-            font-variant-numeric: tabular-nums;
-        }
-        
-        .tower-counter {
-            background: var(--bg-glass);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            padding: 5px 14px;
-            font-size: 12px;
-            font-weight: 600;
-            color: var(--text-secondary);
-            white-space: nowrap;
-        }
-        
-        .tower-counter strong {
-            color: var(--accent-light);
-        }
-        
-        /* ─── Loading ─── */
+        /* ═══ Loading bar — thin accent line ═══ */
         .loading-bar {
             position: fixed;
             top: 0;
             left: 0;
             right: 0;
-            height: 3px;
+            height: 2px;
             z-index: 2000;
-            background: transparent;
             overflow: hidden;
             opacity: 0;
-            transition: opacity 0.2s;
+            transition: opacity var(--transition);
         }
-        
-        .loading-bar.active {
-            opacity: 1;
-        }
-        
+        .loading-bar.active { opacity: 1; }
         .loading-bar::after {
             content: '';
             position: absolute;
             top: 0;
-            left: -40%;
-            width: 40%;
+            left: -50%;
+            width: 50%;
             height: 100%;
-            background: linear-gradient(90deg, transparent, var(--accent), #fff, var(--accent), transparent);
-            animation: loadSlide 1.2s ease-in-out infinite;
+            background: linear-gradient(90deg, transparent, var(--accent), var(--accent-light), var(--accent), transparent);
+            animation: loadSlide 1.4s ease-in-out infinite;
         }
+        @keyframes loadSlide { 0% { left: -50%; } 100% { left: 100%; } }
         
-        @keyframes loadSlide {
-            0% { left: -40%; }
-            100% { left: 100%; }
-        }
-        
-        /* ─── Search ─── */
-        .search-wrap {
+        /* ═══ Toast — minimal pill ═══ */
+        .toast {
             position: fixed;
-            top: calc(56px + var(--safe-top));
-            left: 12px;
-            right: 12px;
-            z-index: 1000;
-            display: none;
-        }
-        
-        .search-wrap.open { display: block; }
-        
-        .search-box {
-            width: 100%;
-            background: var(--bg-glass);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
+            top: calc(16px + var(--safe-top));
+            left: 50%;
+            transform: translateX(-50%) translateY(-12px);
+            z-index: 3000;
+            background: var(--bg-card);
             border: 1px solid var(--border);
-            border-radius: var(--radius-md);
-            padding: 12px 16px;
-            font-size: 15px;
+            border-radius: var(--radius-full);
+            padding: 8px 20px;
+            font-size: 13px;
+            font-weight: 500;
             color: var(--text-primary);
-            outline: none;
-            -webkit-appearance: none;
-            transition: border-color 0.2s;
-        }
-        
-        .search-box:focus { border-color: var(--accent); }
-        .search-box::placeholder { color: var(--text-muted); }
-        
-        .search-results {
-            margin-top: 4px;
-            background: var(--bg-glass);
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            pointer-events: none;
+            white-space: nowrap;
+            box-shadow: var(--shadow-lg);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-md);
-            max-height: 240px;
-            overflow-y: auto;
-            display: none;
+        }
+        .toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
         }
         
-        .search-results.has-results { display: block; }
+        /* ═══ Header — floating glass bar ═══ */
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            padding: calc(8px + var(--safe-top)) 16px 12px;
+            background: linear-gradient(180deg, rgba(10,10,15,0.92) 0%, rgba(10,10,15,0.6) 85%, transparent 100%);
+            pointer-events: none;
+        }
+        .header > * { pointer-events: auto; }
         
-        .search-result-item {
-            padding: 12px 16px;
-            cursor: pointer;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
+        .header-inner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        
+        .brand {
             display: flex;
             align-items: center;
             gap: 10px;
         }
         
-        .search-result-item:last-child { border-bottom: none; }
-        .search-result-item:active { background: rgba(108,92,231,0.15); }
+        .brand-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: var(--radius-sm);
+            background: linear-gradient(135deg, var(--accent), #8b5cf6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+            box-shadow: var(--shadow-glow);
+        }
         
-        .search-result-item .sr-icon { font-size: 18px; flex-shrink: 0; }
-        .search-result-item .sr-name { font-size: 14px; font-weight: 500; }
-        .search-result-item .sr-detail { font-size: 11px; color: var(--text-secondary); }
+        .brand-text h1 {
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: -0.4px;
+            color: #fff;
+            line-height: 1.2;
+        }
         
-        /* ─── Right controls ─── */
-        .controls {
+        .brand-text .subtitle {
+            font-size: 11px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            font-variant-numeric: tabular-nums;
+        }
+        
+        .header-stats {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+        
+        .stat-pill {
+            background: var(--bg-glass);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-full);
+            padding: 6px 12px;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .stat-pill .num { color: var(--accent-light); font-variant-numeric: tabular-nums; }
+        
+        /* ═══ Search — floating panel ═══ */
+        .search-overlay {
             position: fixed;
-            right: 10px;
+            top: calc(58px + var(--safe-top));
+            left: 12px;
+            right: 12px;
+            z-index: 1000;
+            display: none;
+        }
+        .search-overlay.open { display: block; }
+        
+        .search-input {
+            width: 100%;
+            background: var(--bg-glass-heavy);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid var(--border-active);
+            border-radius: var(--radius-md);
+            padding: 14px 18px;
+            font-size: 15px;
+            font-family: inherit;
+            font-weight: 500;
+            color: var(--text-primary);
+            outline: none;
+            -webkit-appearance: none;
+            transition: border-color var(--transition);
+            box-shadow: var(--shadow-glow);
+        }
+        .search-input:focus { border-color: var(--accent); }
+        .search-input::placeholder { color: var(--text-tertiary); }
+        
+        .search-results {
+            margin-top: 6px;
+            background: var(--bg-glass-heavy);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            max-height: 260px;
+            overflow-y: auto;
+            display: none;
+            box-shadow: var(--shadow-lg);
+        }
+        .search-results.has-results { display: block; }
+        
+        .search-result-item {
+            padding: 14px 18px;
+            cursor: pointer;
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: background var(--transition);
+        }
+        .search-result-item:last-child { border-bottom: none; }
+        .search-result-item:active { background: var(--accent-glow); }
+        .search-result-item .sr-icon { font-size: 18px; flex-shrink: 0; }
+        .search-result-item .sr-name { font-size: 14px; font-weight: 600; }
+        .search-result-item .sr-detail { font-size: 11px; color: var(--text-secondary); margin-top: 1px; }
+        
+        /* ═══ Right toolbar — refined pills ═══ */
+        .toolbar {
+            position: fixed;
+            right: 12px;
             top: 50%;
             transform: translateY(-50%);
             z-index: 1000;
@@ -238,203 +287,511 @@
             gap: 6px;
         }
         
-        .ctrl-btn {
+        .tool-btn {
             width: 44px;
             height: 44px;
-            border-radius: var(--radius-md);
+            border-radius: var(--radius-sm);
             border: 1px solid var(--border);
             background: var(--bg-glass);
             backdrop-filter: blur(16px);
             -webkit-backdrop-filter: blur(16px);
             color: var(--text-secondary);
-            font-size: 18px;
+            font-size: 17px;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: all var(--transition);
             -webkit-user-select: none;
             user-select: none;
+            position: relative;
+            overflow: hidden;
         }
-        
-        .ctrl-btn:active {
-            transform: scale(0.9);
-            background: var(--accent-glow);
+        .tool-btn::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, transparent 40%, rgba(255,255,255,0.03));
+            pointer-events: none;
         }
-        
-        .ctrl-btn.active {
+        .tool-btn:active { transform: scale(0.92); }
+        .tool-btn.active {
             background: var(--accent);
             border-color: transparent;
             color: #fff;
-            box-shadow: 0 2px 16px var(--accent-glow);
+            box-shadow: var(--shadow-glow);
         }
         
-        /* ─── Bottom panel ─── */
-        .bottom-panel {
+        /* ═══ Bottom dashboard — the main upgrade ═══ */
+        .dashboard {
             position: fixed;
             bottom: 0;
             left: 0;
             right: 0;
             z-index: 1000;
-            background: linear-gradient(0deg, rgba(10,14,26,0.97) 50%, rgba(10,14,26,0.8) 80%, transparent 100%);
-            padding: 28px 16px calc(12px + var(--safe-bottom));
+            padding: 0 12px calc(10px + var(--safe-bottom));
             pointer-events: none;
-        }
-        
-        .bottom-panel > * { pointer-events: auto; }
-        
-        /* Filter chips */
-        .filter-row {
             display: flex;
+            flex-direction: column;
             gap: 8px;
-            margin-bottom: 12px;
+        }
+        .dashboard > * { pointer-events: auto; }
+        
+        /* Provider filter chips */
+        .filter-bar {
+            display: flex;
+            gap: 6px;
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
             scrollbar-width: none;
-            padding-bottom: 2px;
+            padding: 2px 0;
         }
+        .filter-bar::-webkit-scrollbar { display: none; }
         
-        .filter-row::-webkit-scrollbar { display: none; }
-        
-        .filter-btn {
-            padding: 6px 14px;
-            border-radius: 20px;
+        .chip {
+            padding: 7px 16px;
+            border-radius: var(--radius-full);
             border: 1px solid var(--border);
             background: var(--bg-glass);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
             color: var(--text-secondary);
+            font-family: inherit;
             font-size: 12px;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all var(--transition);
             white-space: nowrap;
             flex-shrink: 0;
             -webkit-user-select: none;
             user-select: none;
-            letter-spacing: 0.2px;
+            letter-spacing: 0.1px;
+        }
+        .chip:active { transform: scale(0.95); }
+        .chip.active { color: #fff; border-color: transparent; }
+        .chip.active[data-filter="all"] { background: var(--accent); box-shadow: 0 2px 16px var(--accent-glow); }
+        .chip.active[data-filter="telefonica"] { background: var(--telefonica); box-shadow: 0 2px 16px rgba(14,165,233,0.3); }
+        .chip.active[data-filter="telekom"] { background: var(--telekom); box-shadow: 0 2px 16px rgba(226,0,116,0.3); }
+        .chip.active[data-filter="vodafone"] { background: var(--vodafone); box-shadow: 0 2px 16px rgba(230,0,0,0.3); }
+        
+        /* Signal card — floating glass card */
+        .signal-card {
+            background: var(--bg-glass-heavy);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 16px 18px;
+            box-shadow: var(--shadow-lg);
+            position: relative;
+            overflow: hidden;
+        }
+        .signal-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
         }
         
-        .filter-btn.active {
-            color: #fff;
-            border-color: transparent;
-        }
-        
-        .filter-btn.active[data-filter="all"] { background: var(--accent); box-shadow: 0 2px 12px var(--accent-glow); }
-        .filter-btn.active[data-filter="telefonica"] { background: var(--telefonica); box-shadow: 0 2px 12px rgba(0,119,230,0.35); }
-        .filter-btn.active[data-filter="telekom"] { background: var(--telekom); box-shadow: 0 2px 12px rgba(226,0,116,0.35); }
-        .filter-btn.active[data-filter="vodafone"] { background: var(--vodafone); box-shadow: 0 2px 12px rgba(230,0,0,0.35); }
-        
-        /* Signal meter */
-        .signal-meter {
+        .signal-main {
             display: flex;
             align-items: center;
-            gap: 12px;
-            margin-bottom: 8px;
+            gap: 14px;
         }
         
-        .signal-bars {
+        /* Modern signal bars */
+        .signal-bars-wrap {
             display: flex;
             gap: 3px;
             align-items: flex-end;
-            height: 26px;
+            height: 32px;
             flex-shrink: 0;
         }
-        
         .signal-bar {
-            width: 7px;
-            border-radius: 2px;
-            background: var(--bg-tertiary);
-            transition: background 0.25s, box-shadow 0.25s;
+            width: 6px;
+            border-radius: 3px;
+            background: var(--bg-card);
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
         }
+        .signal-bar:nth-child(1) { height: 7px; }
+        .signal-bar:nth-child(2) { height: 12px; }
+        .signal-bar:nth-child(3) { height: 17px; }
+        .signal-bar:nth-child(4) { height: 23px; }
+        .signal-bar:nth-child(5) { height: 32px; }
         
-        .signal-bar:nth-child(1) { height: 6px; }
-        .signal-bar:nth-child(2) { height: 10px; }
-        .signal-bar:nth-child(3) { height: 14px; }
-        .signal-bar:nth-child(4) { height: 19px; }
-        .signal-bar:nth-child(5) { height: 26px; }
+        .signal-bar.active.excellent { background: var(--green); box-shadow: 0 0 12px rgba(34,197,94,0.4); }
+        .signal-bar.active.good { background: var(--green-light); box-shadow: 0 0 10px rgba(74,222,128,0.3); }
+        .signal-bar.active.fair { background: var(--yellow); box-shadow: 0 0 10px rgba(234,179,8,0.3); }
+        .signal-bar.active.weak { background: var(--orange); box-shadow: 0 0 10px rgba(249,115,22,0.3); }
+        .signal-bar.active.poor { background: var(--red); box-shadow: 0 0 10px rgba(239,68,68,0.3); }
         
-        .signal-bar.active.excellent { background: var(--excellent); box-shadow: 0 0 8px rgba(0,200,83,0.5); }
-        .signal-bar.active.good { background: var(--good); box-shadow: 0 0 8px rgba(105,240,174,0.4); }
-        .signal-bar.active.fair { background: var(--fair); box-shadow: 0 0 8px rgba(255,215,64,0.4); }
-        .signal-bar.active.weak { background: var(--weak); box-shadow: 0 0 8px rgba(255,138,101,0.4); }
-        .signal-bar.active.poor { background: var(--poor); box-shadow: 0 0 8px rgba(255,82,82,0.4); }
-        
-        .signal-text { flex: 1; min-width: 0; }
-        
-        .signal-text .strength {
+        .signal-info { flex: 1; min-width: 0; }
+        .signal-info .label {
             font-size: 15px;
-            font-weight: 600;
-            line-height: 1.3;
+            font-weight: 700;
+            line-height: 1.2;
+            letter-spacing: -0.2px;
         }
-        
-        .signal-text .detail {
+        .signal-info .meta {
             font-size: 11px;
             color: var(--text-secondary);
             line-height: 1.3;
+            margin-top: 2px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
         
-        .signal-dbm {
+        .signal-value {
             font-variant-numeric: tabular-nums;
-            font-size: 22px;
-            font-weight: 700;
+            font-size: 26px;
+            font-weight: 800;
             flex-shrink: 0;
-            min-width: 70px;
+            letter-spacing: -1px;
             text-align: right;
         }
-        
-        .signal-dbm .unit {
+        .signal-value .unit {
             font-size: 11px;
-            font-weight: 400;
-            color: var(--text-secondary);
+            font-weight: 500;
+            color: var(--text-tertiary);
+            letter-spacing: 0;
         }
         
-        /* Legend */
+        /* Legend — minimal dots */
         .legend {
             display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border-subtle);
         }
-        
         .legend-item {
             display: flex;
             align-items: center;
-            gap: 4px;
+            gap: 5px;
             font-size: 10px;
-            color: var(--text-muted);
+            color: var(--text-tertiary);
+            font-weight: 500;
         }
-        
         .legend-dot {
-            width: 8px;
-            height: 8px;
+            width: 6px;
+            height: 6px;
             border-radius: 50%;
             flex-shrink: 0;
         }
         
-        /* ─── Leaflet overrides ─── */
+        /* ═══ Speed Test Panel ═══ */
+        .speed-panel {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 1500;
+            background: var(--bg-glass-heavy);
+            backdrop-filter: blur(30px);
+            -webkit-backdrop-filter: blur(30px);
+            border-top: 1px solid var(--border);
+            border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+            padding: 24px 20px calc(20px + var(--safe-bottom));
+            transform: translateY(100%);
+            transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            box-shadow: 0 -8px 40px rgba(0,0,0,0.4);
+        }
+        .speed-panel.open { transform: translateY(0); }
+        
+        .speed-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .speed-panel-title {
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: -0.3px;
+        }
+        .speed-close {
+            width: 32px;
+            height: 32px;
+            border-radius: var(--radius-xs);
+            border: 1px solid var(--border);
+            background: var(--bg-card);
+            color: var(--text-secondary);
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all var(--transition);
+        }
+        .speed-close:active { transform: scale(0.9); }
+        
+        .speed-gauges {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        
+        .speed-gauge {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 16px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .speed-gauge::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--accent);
+            transform: scaleX(0);
+            transform-origin: left;
+            transition: transform 1s ease;
+        }
+        .speed-gauge.testing::before { transform: scaleX(1); }
+        .speed-gauge .gauge-icon { font-size: 20px; margin-bottom: 6px; }
+        .speed-gauge .gauge-value {
+            font-size: 24px;
+            font-weight: 800;
+            letter-spacing: -1px;
+            font-variant-numeric: tabular-nums;
+            color: var(--accent-light);
+        }
+        .speed-gauge .gauge-label {
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 2px;
+        }
+        .speed-gauge .gauge-unit {
+            font-size: 11px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+        
+        .speed-start-btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: var(--radius-md);
+            background: linear-gradient(135deg, var(--accent), #8b5cf6);
+            color: #fff;
+            font-family: inherit;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all var(--transition);
+            box-shadow: 0 4px 20px var(--accent-glow-strong);
+            letter-spacing: -0.2px;
+        }
+        .speed-start-btn:active { transform: scale(0.98); opacity: 0.9; }
+        .speed-start-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        /* ═══ Provider Compare Panel ═══ */
+        .compare-panel {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 1500;
+            background: var(--bg-glass-heavy);
+            backdrop-filter: blur(30px);
+            -webkit-backdrop-filter: blur(30px);
+            border-top: 1px solid var(--border);
+            border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+            padding: 24px 20px calc(20px + var(--safe-bottom));
+            transform: translateY(100%);
+            transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            box-shadow: 0 -8px 40px rgba(0,0,0,0.4);
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+        .compare-panel.open { transform: translateY(0); }
+        
+        .compare-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .compare-title { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+        
+        .compare-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 14px 16px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            position: relative;
+            overflow: hidden;
+        }
+        .compare-card::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+        }
+        .compare-card.telefonica::before { background: var(--telefonica); }
+        .compare-card.telekom::before { background: var(--telekom); }
+        .compare-card.vodafone::before { background: var(--vodafone); }
+        
+        .compare-logo {
+            width: 40px;
+            height: 40px;
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+        .compare-logo.telefonica { background: rgba(14,165,233,0.12); }
+        .compare-logo.telekom { background: rgba(226,0,116,0.12); }
+        .compare-logo.vodafone { background: rgba(230,0,0,0.12); }
+        
+        .compare-info { flex: 1; min-width: 0; }
+        .compare-name { font-size: 14px; font-weight: 700; }
+        .compare-detail { font-size: 11px; color: var(--text-secondary); margin-top: 1px; }
+        
+        .compare-signal {
+            text-align: right;
+            flex-shrink: 0;
+        }
+        .compare-dbm { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.5px; }
+        .compare-quality { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+        
+        .compare-recommendation {
+            background: var(--accent-glow);
+            border: 1px solid rgba(99,102,241,0.2);
+            border-radius: var(--radius-md);
+            padding: 12px 16px;
+            margin-top: 12px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--accent-light);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        /* ═══ Info Modal — clean sheet ═══ */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 3000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0.65);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+        }
+        .modal-overlay.open { display: flex; }
+        
+        .modal {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-xl);
+            padding: 28px;
+            max-width: 380px;
+            width: 92%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: var(--shadow-lg);
+            position: relative;
+        }
+        .modal::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+        }
+        .modal h2 {
+            font-size: 20px;
+            font-weight: 800;
+            margin-bottom: 16px;
+            letter-spacing: -0.4px;
+        }
+        .modal p {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.7;
+            margin-bottom: 12px;
+        }
+        .modal .badge-row {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
+        .modal .feature-badge {
+            padding: 4px 10px;
+            border-radius: var(--radius-full);
+            background: var(--accent-glow);
+            color: var(--accent-light);
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .modal .close-modal {
+            width: 100%;
+            padding: 13px;
+            border: none;
+            border-radius: var(--radius-md);
+            background: linear-gradient(135deg, var(--accent), #8b5cf6);
+            color: #fff;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            margin-top: 16px;
+            box-shadow: 0 4px 16px var(--accent-glow-strong);
+            transition: all var(--transition);
+        }
+        .modal .close-modal:active { opacity: 0.85; transform: scale(0.98); }
+        
+        /* ═══ Leaflet Overrides ═══ */
         .leaflet-control-zoom { display: none !important; }
         .leaflet-control-attribution { 
             font-size: 8px !important;
-            background: rgba(13,17,23,0.6) !important;
-            color: var(--text-muted) !important;
+            background: rgba(10,10,15,0.7) !important;
+            color: var(--text-tertiary) !important;
             padding: 2px 6px !important;
             border-radius: 4px 0 0 0 !important;
+            font-family: 'Inter', sans-serif !important;
         }
         .leaflet-control-attribution a { color: var(--accent) !important; }
         
         /* Tower markers */
         .tower-marker {
-            width: 12px;
-            height: 12px;
+            width: 10px;
+            height: 10px;
             border-radius: 50%;
-            border: 2px solid rgba(255,255,255,0.85);
-            box-shadow: 0 1px 4px rgba(0,0,0,0.6);
+            border: 2px solid rgba(255,255,255,0.9);
+            box-shadow: 0 1px 6px rgba(0,0,0,0.5);
             transition: transform 0.1s;
         }
-        
         .tower-marker.telefonica { background: var(--telefonica); }
         .tower-marker.telekom { background: var(--telekom); }
         .tower-marker.vodafone { background: var(--vodafone); }
@@ -444,184 +801,199 @@
         .marker-cluster-small, .marker-cluster-medium, .marker-cluster-large {
             background: var(--accent-glow) !important;
         }
-        
         .marker-cluster-small div, .marker-cluster-medium div, .marker-cluster-large div {
             background: var(--accent) !important;
             color: #fff !important;
             font-weight: 700 !important;
             font-size: 11px !important;
-            box-shadow: 0 2px 8px var(--accent-glow) !important;
+            font-family: 'Inter', sans-serif !important;
+            box-shadow: 0 2px 12px var(--accent-glow) !important;
         }
         
-        /* User location marker */
+        /* User location */
         .user-marker {
-            width: 16px;
-            height: 16px;
+            width: 14px;
+            height: 14px;
             background: var(--accent);
             border: 3px solid #fff;
             border-radius: 50%;
-            box-shadow: 0 0 0 4px rgba(108,92,231,0.3);
-            animation: userPulse 2s ease-in-out infinite;
+            box-shadow: 0 0 0 4px var(--accent-glow-strong);
+            animation: userPulse 2.5s ease-in-out infinite;
         }
-        
         @keyframes userPulse {
-            0%, 100% { box-shadow: 0 0 0 4px rgba(108,92,231,0.3); }
-            50% { box-shadow: 0 0 0 8px rgba(108,92,231,0.1); }
+            0%, 100% { box-shadow: 0 0 0 4px rgba(99,102,241,0.3); }
+            50% { box-shadow: 0 0 0 10px rgba(99,102,241,0.08); }
         }
         
         /* Tower popup */
         .leaflet-popup-content-wrapper {
-            background: var(--bg-secondary) !important;
+            background: var(--bg-elevated) !important;
             color: var(--text-primary) !important;
             border-radius: var(--radius-lg) !important;
             border: 1px solid var(--border) !important;
-            box-shadow: 0 12px 40px rgba(0,0,0,0.5) !important;
+            box-shadow: var(--shadow-lg) !important;
+            font-family: 'Inter', sans-serif !important;
         }
-        
-        .leaflet-popup-tip { background: var(--bg-secondary) !important; }
-        
-        .leaflet-popup-close-button {
-            color: var(--text-secondary) !important;
-            font-size: 20px !important;
-        }
+        .leaflet-popup-tip { background: var(--bg-elevated) !important; }
+        .leaflet-popup-close-button { color: var(--text-tertiary) !important; font-size: 20px !important; }
         
         .tower-popup { font-size: 13px; line-height: 1.5; }
         .tower-popup .tp-header {
             display: flex;
             align-items: center;
-            gap: 8px;
-            margin-bottom: 6px;
-            padding-bottom: 6px;
-            border-bottom: 1px solid rgba(255,255,255,0.06);
+            gap: 10px;
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border-subtle);
         }
         .tower-popup .tp-icon {
-            width: 32px;
-            height: 32px;
-            border-radius: 8px;
+            width: 34px;
+            height: 34px;
+            border-radius: var(--radius-sm);
             display: flex;
             align-items: center;
             justify-content: center;
             font-size: 16px;
             flex-shrink: 0;
         }
-        .tower-popup .tp-icon.telefonica { background: rgba(0,102,204,0.2); }
-        .tower-popup .tp-icon.telekom { background: rgba(226,0,116,0.2); }
-        .tower-popup .tp-icon.vodafone { background: rgba(230,0,0,0.2); }
-        .tower-popup .tp-icon.other { background: rgba(110,118,129,0.2); }
-        
-        .tower-popup .tp-title { font-weight: 600; font-size: 14px; }
+        .tower-popup .tp-icon.telefonica { background: rgba(14,165,233,0.12); }
+        .tower-popup .tp-icon.telekom { background: rgba(226,0,116,0.12); }
+        .tower-popup .tp-icon.vodafone { background: rgba(230,0,0,0.12); }
+        .tower-popup .tp-icon.other { background: rgba(107,114,128,0.12); }
+        .tower-popup .tp-title { font-weight: 700; font-size: 14px; letter-spacing: -0.2px; }
         .tower-popup .tp-operator { font-size: 11px; color: var(--text-secondary); }
-        
         .tower-popup .tp-row {
             display: flex;
             justify-content: space-between;
-            padding: 2px 0;
+            padding: 3px 0;
         }
         .tower-popup .tp-label { color: var(--text-secondary); font-size: 12px; }
-        .tower-popup .tp-value { font-size: 12px; font-weight: 500; }
+        .tower-popup .tp-value { font-size: 12px; font-weight: 600; }
         
         /* Network badges */
         .net-badge {
             display: inline-block;
-            padding: 1px 5px;
-            border-radius: 4px;
+            padding: 2px 6px;
+            border-radius: var(--radius-xs);
             font-size: 10px;
             font-weight: 700;
             letter-spacing: 0.3px;
         }
         .net-badge.b5g { background: var(--accent); color: #fff; }
-        .net-badge.b4g { background: var(--excellent); color: #fff; }
-        .net-badge.b3g { background: var(--fair); color: #111; }
-        .net-badge.b2g { background: var(--poor); color: #fff; }
+        .net-badge.b4g { background: var(--green); color: #fff; }
+        .net-badge.b3g { background: var(--yellow); color: #111; }
+        .net-badge.b2g { background: var(--red); color: #fff; }
         
         /* Accuracy circle */
         .accuracy-circle {
-            fill: rgba(108,92,231,0.08);
-            stroke: rgba(108,92,231,0.3);
+            fill: rgba(99,102,241,0.06);
+            stroke: rgba(99,102,241,0.25);
         }
         
-        /* ─── Info modal ─── */
-        .info-modal {
+        /* ═══ Onboarding overlay ═══ */
+        .onboarding {
             position: fixed;
             inset: 0;
-            z-index: 3000;
-            display: none;
+            z-index: 5000;
+            background: var(--bg-primary);
+            display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
-            background: rgba(0,0,0,0.6);
-            backdrop-filter: blur(4px);
+            padding: 32px;
+            text-align: center;
+            transition: opacity 0.5s, transform 0.5s;
         }
-        
-        .info-modal.open { display: flex; }
-        
-        .info-content {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-lg);
-            padding: 24px;
-            max-width: 340px;
-            width: 90%;
-            max-height: 80vh;
-            overflow-y: auto;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+        .onboarding.hidden {
+            opacity: 0;
+            transform: scale(1.02);
+            pointer-events: none;
         }
-        
-        .info-content h2 {
-            font-size: 18px;
-            margin-bottom: 12px;
-            color: #fff;
+        .onboarding-icon {
+            width: 72px;
+            height: 72px;
+            border-radius: 20px;
+            background: linear-gradient(135deg, var(--accent), #8b5cf6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 36px;
+            margin-bottom: 24px;
+            box-shadow: 0 8px 40px var(--accent-glow-strong);
         }
-        
-        .info-content p {
-            font-size: 13px;
+        .onboarding h1 {
+            font-size: 28px;
+            font-weight: 800;
+            letter-spacing: -0.8px;
+            margin-bottom: 8px;
+        }
+        .onboarding .tagline {
+            font-size: 15px;
             color: var(--text-secondary);
-            line-height: 1.6;
-            margin-bottom: 10px;
+            margin-bottom: 32px;
+            line-height: 1.5;
         }
-        
-        .info-content .close-btn {
+        .onboarding .provider-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
             width: 100%;
-            padding: 12px;
+            max-width: 320px;
+            margin-bottom: 24px;
+        }
+        .onboarding .provider-option {
+            padding: 16px;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border);
+            background: var(--bg-card);
+            cursor: pointer;
+            transition: all var(--transition);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+        .onboarding .provider-option:active { transform: scale(0.96); }
+        .onboarding .provider-option.selected {
+            border-color: var(--accent);
+            background: var(--accent-glow);
+            box-shadow: var(--shadow-glow);
+        }
+        .onboarding .provider-option .p-name { font-size: 13px; font-weight: 700; }
+        .onboarding .provider-option .p-icon { font-size: 24px; }
+        
+        .onboarding .start-btn {
+            width: 100%;
+            max-width: 320px;
+            padding: 15px;
             border: none;
             border-radius: var(--radius-md);
-            background: var(--accent);
+            background: linear-gradient(135deg, var(--accent), #8b5cf6);
             color: #fff;
-            font-size: 14px;
-            font-weight: 600;
+            font-family: inherit;
+            font-size: 16px;
+            font-weight: 700;
             cursor: pointer;
-            margin-top: 12px;
-            box-shadow: 0 4px 16px var(--accent-glow);
-            transition: opacity 0.15s;
+            box-shadow: 0 4px 24px var(--accent-glow-strong);
+            transition: all var(--transition);
+            letter-spacing: -0.2px;
         }
+        .onboarding .start-btn:active { transform: scale(0.98); opacity: 0.9; }
         
-        .info-content .close-btn:active { opacity: 0.8; }
-        
-        /* ─── Toast notifications ─── */
-        .toast {
-            position: fixed;
-            top: calc(60px + var(--safe-top));
-            left: 50%;
-            transform: translateX(-50%) translateY(-20px);
-            z-index: 2000;
-            background: var(--bg-glass);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-md);
-            padding: 10px 18px;
+        .onboarding .skip-link {
+            margin-top: 16px;
             font-size: 13px;
-            font-weight: 500;
-            color: var(--text-primary);
-            opacity: 0;
-            transition: all 0.3s ease;
-            pointer-events: none;
-            white-space: nowrap;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+            color: var(--text-tertiary);
+            cursor: pointer;
+            transition: color var(--transition);
         }
+        .onboarding .skip-link:active { color: var(--text-secondary); }
         
-        .toast.show {
-            opacity: 1;
-            transform: translateX(-50%) translateY(0);
+        /* ═══ Responsive tweaks ═══ */
+        @media (min-width: 768px) {
+            .dashboard { max-width: 420px; left: 50%; transform: translateX(-50%); }
+            .speed-panel, .compare-panel { max-width: 480px; left: 50%; transform: translateX(-50%) translateY(100%); }
+            .speed-panel.open, .compare-panel.open { transform: translateX(-50%) translateY(0); }
         }
     </style>
 </head>
@@ -632,94 +1004,178 @@
     <!-- Toast -->
     <div class="toast" id="toast"></div>
     
-    <!-- Top bar -->
-    <div class="top-bar">
-        <div class="top-bar-left">
-            <div class="app-logo">📡</div>
-            <div>
-                <h1>SignalRadar</h1>
-                <div class="coords" id="coordsDisplay">Standort ermitteln...</div>
+    <!-- Onboarding -->
+    <div class="onboarding" id="onboarding">
+        <div class="onboarding-icon">📡</div>
+        <h1>SignalRadar</h1>
+        <p class="tagline">Mobilfunk-Abdeckung für Deutschland<br>Zero Tracking · Made in Germany 🇩🇪</p>
+        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">Wähle deinen Provider:</p>
+        <div class="provider-grid">
+            <div class="provider-option selected" data-provider="all" onclick="selectProvider(this)">
+                <span class="p-icon">📶</span>
+                <span class="p-name">Alle</span>
+            </div>
+            <div class="provider-option" data-provider="telefonica" onclick="selectProvider(this)">
+                <span class="p-icon" style="color:var(--telefonica)">●</span>
+                <span class="p-name">O2 / 1&1</span>
+            </div>
+            <div class="provider-option" data-provider="telekom" onclick="selectProvider(this)">
+                <span class="p-icon" style="color:var(--telekom)">●</span>
+                <span class="p-name">Telekom</span>
+            </div>
+            <div class="provider-option" data-provider="vodafone" onclick="selectProvider(this)">
+                <span class="p-icon" style="color:var(--vodafone)">●</span>
+                <span class="p-name">Vodafone</span>
             </div>
         </div>
-        <div class="tower-counter" id="towerCount">
-            <strong>--</strong> Masten
+        <button class="start-btn" onclick="startApp()">Los geht's</button>
+        <div class="skip-link" onclick="startApp()">Überspringen</div>
+    </div>
+    
+    <!-- Header -->
+    <div class="header">
+        <div class="header-inner">
+            <div class="brand">
+                <div class="brand-icon">📡</div>
+                <div class="brand-text">
+                    <h1>SignalRadar</h1>
+                    <div class="subtitle" id="coordsDisplay">Standort ermitteln...</div>
+                </div>
+            </div>
+            <div class="header-stats">
+                <div class="stat-pill" id="towerCount">
+                    <span class="num">--</span> Masten
+                </div>
+            </div>
         </div>
     </div>
     
     <!-- Search -->
-    <div class="search-wrap" id="searchWrap">
-        <input type="text" class="search-box" id="searchBox" placeholder="Ort oder PLZ suchen..." autocomplete="off">
+    <div class="search-overlay" id="searchWrap">
+        <input type="text" class="search-input" id="searchBox" placeholder="Ort, PLZ oder Adresse suchen..." autocomplete="off">
         <div class="search-results" id="searchResults"></div>
     </div>
     
     <!-- Map -->
     <div id="map"></div>
     
-    <!-- Controls -->
-    <div class="controls">
-        <button class="ctrl-btn" id="btnSearch" title="Suche">🔍</button>
-        <button class="ctrl-btn" id="btnLocate" title="Mein Standort">📍</button>
-        <button class="ctrl-btn" id="btnSatellite" title="Satellitenkarte">🛰️</button>
-        <button class="ctrl-btn" id="btnHeatmap" title="Signal-Heatmap">🌡️</button>
-        <button class="ctrl-btn" id="btnMeasure" title="Entfernung messen">📏</button>
-        <button class="ctrl-btn" id="btnInfo" title="Info">ℹ️</button>
+    <!-- Toolbar -->
+    <div class="toolbar">
+        <button class="tool-btn" id="btnSearch" title="Suche">🔍</button>
+        <button class="tool-btn" id="btnLocate" title="Standort">📍</button>
+        <button class="tool-btn" id="btnSatellite" title="Karte">🛰️</button>
+        <button class="tool-btn" id="btnHeatmap" title="Heatmap">🌡️</button>
+        <button class="tool-btn" id="btnSpeed" title="Speed Test">⚡</button>
+        <button class="tool-btn" id="btnCompare" title="Vergleich">⚖️</button>
+        <button class="tool-btn" id="btnMeasure" title="Messen">📏</button>
+        <button class="tool-btn" id="btnInfo" title="Info">ℹ️</button>
     </div>
     
-    <!-- Bottom panel -->
-    <div class="bottom-panel">
-        <div class="filter-row">
-            <button class="filter-btn active" data-filter="all">Alle</button>
-            <button class="filter-btn" data-filter="telefonica">O2 / 1&1</button>
-            <button class="filter-btn" data-filter="telekom">Telekom</button>
-            <button class="filter-btn" data-filter="vodafone">Vodafone</button>
+    <!-- Bottom Dashboard -->
+    <div class="dashboard">
+        <div class="filter-bar">
+            <button class="chip active" data-filter="all">Alle Netze</button>
+            <button class="chip" data-filter="telefonica">O2 / 1&1</button>
+            <button class="chip" data-filter="telekom">Telekom</button>
+            <button class="chip" data-filter="vodafone">Vodafone</button>
         </div>
-        <div class="signal-meter">
-            <div class="signal-bars" id="signalBars">
-                <div class="signal-bar"></div>
-                <div class="signal-bar"></div>
-                <div class="signal-bar"></div>
-                <div class="signal-bar"></div>
-                <div class="signal-bar"></div>
+        <div class="signal-card">
+            <div class="signal-main">
+                <div class="signal-bars-wrap" id="signalBars">
+                    <div class="signal-bar"></div>
+                    <div class="signal-bar"></div>
+                    <div class="signal-bar"></div>
+                    <div class="signal-bar"></div>
+                    <div class="signal-bar"></div>
+                </div>
+                <div class="signal-info">
+                    <div class="label" id="signalStrength">Tippe auf die Karte</div>
+                    <div class="meta" id="signalDetail">Signal wird berechnet</div>
+                </div>
+                <div class="signal-value" id="signalDbm">
+                    <span class="unit">dBm</span>
+                </div>
             </div>
-            <div class="signal-text">
-                <div class="strength" id="signalStrength">Tippe auf die Karte</div>
-                <div class="detail" id="signalDetail">Signal wird berechnet</div>
-            </div>
-            <div class="signal-dbm" id="signalDbm">
-                <span class="unit">dBm</span>
+            <div class="legend">
+                <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div>Stark</div>
+                <div class="legend-item"><div class="legend-dot" style="background:var(--green-light)"></div>Gut</div>
+                <div class="legend-item"><div class="legend-dot" style="background:var(--yellow)"></div>Mittel</div>
+                <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div>Schwach</div>
+                <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div>Kein Netz</div>
             </div>
         </div>
-        <div class="legend">
-            <div class="legend-item"><div class="legend-dot" style="background:var(--excellent)"></div>Stark</div>
-            <div class="legend-item"><div class="legend-dot" style="background:var(--good)"></div>Gut</div>
-            <div class="legend-item"><div class="legend-dot" style="background:var(--fair)"></div>Mittel</div>
-            <div class="legend-item"><div class="legend-dot" style="background:var(--weak)"></div>Schwach</div>
-            <div class="legend-item"><div class="legend-dot" style="background:var(--poor)"></div>Kein Netz</div>
+    </div>
+    
+    <!-- Speed Test Panel -->
+    <div class="speed-panel" id="speedPanel">
+        <div class="speed-panel-header">
+            <span class="speed-panel-title">⚡ Speed Test</span>
+            <button class="speed-close" onclick="toggleSpeedPanel()">✕</button>
         </div>
+        <div class="speed-gauges">
+            <div class="speed-gauge" id="gaugeDown">
+                <div class="gauge-icon">↓</div>
+                <div class="gauge-value" id="speedDown">--</div>
+                <div class="gauge-unit">Mbps</div>
+                <div class="gauge-label">Download</div>
+            </div>
+            <div class="speed-gauge" id="gaugeUp">
+                <div class="gauge-icon">↑</div>
+                <div class="gauge-value" id="speedUp">--</div>
+                <div class="gauge-unit">Mbps</div>
+                <div class="gauge-label">Upload</div>
+            </div>
+            <div class="speed-gauge" id="gaugePing">
+                <div class="gauge-icon">●</div>
+                <div class="gauge-value" id="speedPing">--</div>
+                <div class="gauge-unit">ms</div>
+                <div class="gauge-label">Ping</div>
+            </div>
+        </div>
+        <button class="speed-start-btn" id="speedStartBtn" onclick="runSpeedTest()">Test starten</button>
+    </div>
+    
+    <!-- Provider Compare Panel -->
+    <div class="compare-panel" id="comparePanel">
+        <div class="compare-header">
+            <span class="compare-title">⚖️ Provider-Vergleich</span>
+            <button class="speed-close" onclick="toggleComparePanel()">✕</button>
+        </div>
+        <div id="compareResults"></div>
     </div>
     
     <!-- Info Modal -->
-    <div class="info-modal" id="infoModal">
-        <div class="info-content">
-            <h2>📡 SignalRadar v2.1</h2>
-            <p><strong>Mobilfunk-Abdeckungskarte fuer Deutschland</strong></p>
-            <p>Echtzeit-Visualisierung von Funkmasten (OpenStreetMap) mit Signalstaerke-Berechnung via COST 231 Hata-Modell.</p>
-            <p><strong>Bedienung:</strong><br>
-            🔍 Ort oder PLZ suchen<br>
-            📍 GPS-Standort anzeigen<br>
-            🛰️ Karte: Satellit / Strasse<br>
+    <div class="modal-overlay" id="infoModal">
+        <div class="modal">
+            <h2>📡 SignalRadar</h2>
+            <div class="badge-row">
+                <span class="feature-badge">v3.0</span>
+                <span class="feature-badge">Zero Tracking</span>
+                <span class="feature-badge">Made in 🇩🇪</span>
+                <span class="feature-badge">Open Source</span>
+            </div>
+            <p><strong>Mobilfunk-Abdeckungskarte für Deutschland.</strong> Signalstärke-Berechnung via COST 231 Hata-Modell mit echten Sendemasten-Daten.</p>
+            <p><strong>Features:</strong><br>
+            🔍 Ort, PLZ oder Adresse suchen<br>
+            📍 GPS-Standort mit Live-Tracking<br>
+            🛰️ Satelliten- oder Straßenkarte<br>
             🌡️ Signal-Heatmap (Zoom 12+)<br>
-            📏 Entfernungen messen<br>
-            Tippe auf die Karte fuer Signalstaerke</p>
-            <p><strong>Netze:</strong> O2/1&1 (Telefonica), Telekom, Vodafone</p>
-            <p style="font-size:11px;color:var(--text-muted);margin-top:12px">Entwickelt von PurpleDoubleD<br>Daten: OpenStreetMap Contributors</p>
-            <button class="close-btn" onclick="document.getElementById('infoModal').classList.remove('open')">OK</button>
+            ⚡ Integrierter Speed Test<br>
+            ⚖️ Provider-Vergleich an deinem Standort<br>
+            📏 Entfernungen messen</p>
+            <p><strong>Netze:</strong> O2/1&1, Telekom, Vodafone</p>
+            <p><strong>Datenquellen:</strong> OpenStreetMap, Overpass API</p>
+            <p style="font-size:11px;color:var(--text-tertiary);margin-top:16px;border-top:1px solid var(--border-subtle);padding-top:12px">
+                Entwickelt von <strong>PurpleDoubleD</strong><br>
+                Keine Daten werden gesammelt oder weitergegeben.<br>
+                Deine Privatsphäre ist uns wichtig.
+            </p>
+            <button class="close-modal" onclick="document.getElementById('infoModal').classList.remove('open')">Verstanden</button>
         </div>
     </div>
     
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <!-- Leaflet MarkerCluster -->
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     
     <script src="app.js"></script>

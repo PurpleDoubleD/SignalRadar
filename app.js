@@ -1,5 +1,5 @@
 // ============================================================
-// SignalRadar v2.1 - Mobilfunk-Abdeckungskarte für Deutschland
+// SignalRadar v3.0 — Mobilfunk-Abdeckungskarte für Deutschland
 // by PurpleDoubleD
 // ============================================================
 
@@ -7,11 +7,9 @@
 
 // ─── Config ───────────────────────────────────────────────────
 const CONFIG = {
-    // Viersen (41747) als Default-Zentrum
-    defaultCenter: [51.2544, 6.3945],
+    defaultCenter: [51.2544, 6.3945], // Viersen
     defaultZoom: 12,
     
-    // Overpass
     overpassEndpoints: [
         'https://overpass-api.de/api/interpreter',
         'https://overpass.kumi.systems/api/interpreter',
@@ -19,32 +17,25 @@ const CONFIG = {
     ],
     overpassTimeout: 45,
     
-    // Signal colors
     signalColors: {
-        excellent: '#2ea043',
-        good: '#56d364',
-        fair: '#d29922',
-        weak: '#e17055',
-        poor: '#f85149',
-        none: '#484f58',
+        excellent: '#22c55e',
+        good: '#4ade80',
+        fair: '#eab308',
+        weak: '#f97316',
+        poor: '#ef4444',
+        none: '#555568',
     },
     
-    // COST 231 Hata parameters
     frequencies: {
         '5G':  { freq: 3600, eirp: 62 },
-        '4G':  { freq: 800,  eirp: 60 },  // LTE 800 - best rural coverage
+        '4G':  { freq: 800,  eirp: 60 },
         '3G':  { freq: 2100, eirp: 56 },
         '2G':  { freq: 900,  eirp: 52 },
     },
-    towerHeight: 40,     // meters (default)
-    phoneHeight: 1.5,    // meters
-    forestAttenuation: 15,
-    buildingAttenuation: 12,
+    towerHeight: 40,
+    phoneHeight: 1.5,
     
-    // Heatmap
-    heatmapResolution: 6,  // pixels per sample point
-    
-    // Nominatim for geocoding
+    heatmapResolution: 6,
     nominatimUrl: 'https://nominatim.openstreetmap.org',
 };
 
@@ -72,6 +63,8 @@ let currentOverpassIdx = 0;
 let searchDebounce = null;
 let watchId = null;
 let heatmapWorking = false;
+let speedTestRunning = false;
+let selectedProvider = 'all';
 
 // ─── Utilities ────────────────────────────────────────────────
 function toast(msg, duration = 2500) {
@@ -105,6 +98,51 @@ function hexToRgb(hex) {
     return r ? { r: parseInt(r[1], 16), g: parseInt(r[2], 16), b: parseInt(r[3], 16) } : { r: 80, g: 80, b: 80 };
 }
 
+// ─── Onboarding ───────────────────────────────────────────────
+function selectProvider(el) {
+    document.querySelectorAll('.provider-option').forEach(o => o.classList.remove('selected'));
+    el.classList.add('selected');
+    selectedProvider = el.dataset.provider;
+}
+
+function startApp() {
+    const onboarding = document.getElementById('onboarding');
+    onboarding.classList.add('hidden');
+    setTimeout(() => { onboarding.style.display = 'none'; }, 500);
+    
+    // Apply selected provider as filter
+    if (selectedProvider !== 'all') {
+        activeFilter = selectedProvider;
+        document.querySelectorAll('.chip').forEach(c => {
+            c.classList.toggle('active', c.dataset.filter === selectedProvider);
+        });
+    }
+    
+    // Save preference
+    try { localStorage.setItem('sr_provider', selectedProvider); } catch(e) {}
+    try { localStorage.setItem('sr_onboarded', '1'); } catch(e) {}
+    
+    // Initialize
+    initMap();
+}
+
+// Check if already onboarded
+function checkOnboarding() {
+    try {
+        if (localStorage.getItem('sr_onboarded') === '1') {
+            const saved = localStorage.getItem('sr_provider') || 'all';
+            selectedProvider = saved;
+            if (saved !== 'all') {
+                activeFilter = saved;
+            }
+            document.getElementById('onboarding').style.display = 'none';
+            initMap();
+            return;
+        }
+    } catch(e) {}
+    // Show onboarding
+}
+
 // ─── Operator Classification ──────────────────────────────────
 function classifyOperator(tags) {
     const fields = [
@@ -113,19 +151,10 @@ function classifyOperator(tags) {
         tags.description, tags.owner,
     ].filter(Boolean).map(s => s.toLowerCase()).join(' ');
     
-    // Telefónica / O2 / 1&1 / Drillisch (all same network)
     if (/telefonica|telefónica|o2|e[\-\s]?plus|drillisch|1[&u]1|eplus/.test(fields)) return 'telefonica';
-    
-    // Deutsche Telekom
     if (/telekom|t[\-\s]?mobile|deutsche\s*funk|dfmg|dtag/.test(fields)) return 'telekom';
-    
-    // Vodafone
     if (/vodafone|d2|unitymedia/.test(fields)) return 'vodafone';
-    
-    // Infrastructure companies (multi-operator)
     if (/american\s*tower|vantage|gip|dfmg/.test(fields)) return 'other';
-    
-    // Non-mobile infrastructure - filter out
     if (/db\s|rundfunk|broadcast|tetra|bos[\-\s]|polizei|feuerwehr|amateur/.test(fields)) return 'infrastructure';
     
     return 'other';
@@ -142,11 +171,11 @@ function getOperatorLabel(type) {
 
 function getOperatorColor(type) {
     return {
-        telefonica: '#0066cc',
+        telefonica: '#0ea5e9',
         telekom: '#e20074',
         vodafone: '#e60000',
-        other: '#6e7681',
-    }[type] || '#6e7681';
+        other: '#6b7280',
+    }[type] || '#6b7280';
 }
 
 // ─── Signal Calculation (COST 231 Hata) ──────────────────────
@@ -159,18 +188,11 @@ function calculateSignal(distKm, freqMHz, eirp, towerH = CONFIG.towerHeight) {
     const f = freqMHz;
     const d = distKm;
     
-    // Mobile antenna height correction (small/medium city)
     const aHm = (1.1 * Math.log10(f) - 0.7) * hm - (1.56 * Math.log10(f) - 0.8);
-    
-    // COST 231 Hata path loss (urban)
     let pathLoss = 46.3 + 33.9 * Math.log10(f) - 13.82 * Math.log10(hb) - aHm
                    + (44.9 - 6.55 * Math.log10(hb)) * Math.log10(d);
-    
-    // Suburban correction
     pathLoss -= 2 * (Math.log10(f / 28)) ** 2 - 5.4;
-    
-    // Clutter/fading margin (realistic)
-    pathLoss += 8; // shadow fading margin
+    pathLoss += 8;
     
     return Math.round(eirp - pathLoss);
 }
@@ -199,9 +221,8 @@ function getBestSignalAt(lat, lng, filterOp = 'all') {
         const dist = getDistanceKm(lat, lng, tower.lat, tower.lon);
         if (dist > 35) continue;
         
-        // Determine which technologies this tower supports
         const techs = getTowerTechs(tower);
-        const techsToCalc = techs.length > 0 ? techs : ['4G']; // default assume LTE
+        const techsToCalc = techs.length > 0 ? techs : ['4G'];
         
         for (const tech of techsToCalc) {
             const cfg = CONFIG.frequencies[tech];
@@ -230,7 +251,6 @@ function getTowerTechs(tower) {
 
 // ─── Tower Loading (Overpass API) ─────────────────────────────
 async function loadTowers(bounds, retries = 2) {
-    // Check if already loaded
     if (isRegionLoaded(bounds)) return;
     
     setLoading(true);
@@ -240,7 +260,6 @@ async function loadTowers(bounds, retries = 2) {
     const n = bounds.getNorth().toFixed(6);
     const e = bounds.getEast().toFixed(6);
     
-    // Enhanced query: get all communication towers + masts + sites
     const query = `[out:json][timeout:${CONFIG.overpassTimeout}];(
         node["man_made"="mast"]["tower:type"="communication"](${s},${w},${n},${e});
         node["communication:mobile_phone"="yes"](${s},${w},${n},${e});
@@ -267,7 +286,6 @@ async function loadTowers(bounds, retries = 2) {
             });
             
             clearTimeout(timeout);
-            
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             
             const data = await response.json();
@@ -300,9 +318,7 @@ async function loadTowers(bounds, retries = 2) {
             renderTowers();
             updateTowerCount();
             
-            if (added > 0) {
-                toast(`${added} neue Masten geladen`);
-            }
+            if (added > 0) toast(`${added} neue Masten geladen`);
             
             setLoading(false);
             return;
@@ -315,7 +331,6 @@ async function loadTowers(bounds, retries = 2) {
                 toast('Masten konnten nicht geladen werden');
                 setLoading(false);
             } else {
-                // Brief pause before retry
                 await new Promise(r => setTimeout(r, 1000));
             }
         }
@@ -328,7 +343,6 @@ function isRegionLoaded(bounds) {
 
 function markRegionLoaded(bounds) {
     loadedRegions.push(bounds.pad(0.2));
-    // Keep max 20 regions
     if (loadedRegions.length > 20) loadedRegions.shift();
 }
 
@@ -346,17 +360,16 @@ function renderTowers() {
         const icon = L.divIcon({
             className: '',
             html: `<div class="tower-marker ${tower.opType}"></div>`,
-            iconSize: [12, 12],
-            iconAnchor: [6, 6],
+            iconSize: [10, 10],
+            iconAnchor: [5, 5],
         });
         
         const marker = L.marker([tower.lat, tower.lon], { icon });
         
-        // Popup
         const techs = getTowerTechs(tower);
         const techStr = techs.length > 0
             ? techs.map(t => `<span class="net-badge b${t.toLowerCase()}">${t}</span>`).join(' ')
-            : '<span style="color:var(--text-muted)">nicht angegeben</span>';
+            : '<span style="color:var(--text-tertiary)">nicht angegeben</span>';
         
         const distStr = userPosition
             ? formatDist(getDistanceKm(userPosition.lat, userPosition.lng, tower.lat, tower.lon) * 1000)
@@ -387,7 +400,7 @@ function updateTowerCount() {
         if (activeFilter === 'all') return true;
         return t.opType === activeFilter;
     }).length;
-    document.getElementById('towerCount').innerHTML = `<strong>${count}</strong> Masten`;
+    document.getElementById('towerCount').innerHTML = `<span class="num">${count}</span> Masten`;
 }
 
 // ─── Signal Display ───────────────────────────────────────────
@@ -395,14 +408,12 @@ function updateSignalDisplay(lat, lng) {
     const result = getBestSignalAt(lat, lng, activeFilter);
     const quality = getSignalQuality(result.signal);
     
-    // Bars
     const bars = document.querySelectorAll('.signal-bar');
     bars.forEach((bar, i) => {
         bar.className = 'signal-bar';
         if (i < quality.level) bar.classList.add('active', quality.css);
     });
     
-    // Text
     const strengthEl = document.getElementById('signalStrength');
     const detailEl = document.getElementById('signalDetail');
     const dbmEl = document.getElementById('signalDbm');
@@ -438,7 +449,6 @@ function generateHeatmap() {
     heatmapWorking = true;
     setLoading(true);
     
-    // Use requestAnimationFrame to not block UI
     requestAnimationFrame(() => {
         try {
             const bounds = map.getBounds();
@@ -465,7 +475,7 @@ function generateHeatmap() {
                         imageData.data[idx]     = rgb.r;
                         imageData.data[idx + 1] = rgb.g;
                         imageData.data[idx + 2] = rgb.b;
-                        imageData.data[idx + 3] = 120;
+                        imageData.data[idx + 3] = 100;
                     }
                 }
             }
@@ -474,7 +484,7 @@ function generateHeatmap() {
             
             if (isHeatmapOn) {
                 heatmapLayer = L.imageOverlay(canvas.toDataURL(), bounds, {
-                    opacity: 0.5,
+                    opacity: 0.45,
                     interactive: false,
                 });
                 heatmapLayer.addTo(map);
@@ -488,6 +498,175 @@ function generateHeatmap() {
     });
 }
 
+// ─── Speed Test ───────────────────────────────────────────────
+function toggleSpeedPanel() {
+    const panel = document.getElementById('speedPanel');
+    const btn = document.getElementById('btnSpeed');
+    panel.classList.toggle('open');
+    btn.classList.toggle('active');
+    // Close compare if open
+    document.getElementById('comparePanel').classList.remove('open');
+    document.getElementById('btnCompare').classList.remove('active');
+}
+
+async function runSpeedTest() {
+    if (speedTestRunning) return;
+    speedTestRunning = true;
+    
+    const btn = document.getElementById('speedStartBtn');
+    btn.disabled = true;
+    btn.textContent = 'Teste Download...';
+    
+    const downEl = document.getElementById('speedDown');
+    const upEl = document.getElementById('speedUp');
+    const pingEl = document.getElementById('speedPing');
+    
+    downEl.textContent = '...';
+    upEl.textContent = '...';
+    pingEl.textContent = '...';
+    
+    document.getElementById('gaugeDown').classList.add('testing');
+    
+    try {
+        // Ping test
+        const pingStart = performance.now();
+        await fetch('https://www.google.com/favicon.ico?t=' + Date.now(), { mode: 'no-cors', cache: 'no-store' });
+        const pingTime = Math.round(performance.now() - pingStart);
+        pingEl.textContent = pingTime;
+        
+        // Download test — fetch a known file multiple times
+        btn.textContent = 'Teste Download...';
+        const downloadUrl = 'https://speed.cloudflare.com/__down?bytes=2000000';
+        const dlStart = performance.now();
+        let totalBytes = 0;
+        
+        const dlPromises = [];
+        for (let i = 0; i < 3; i++) {
+            dlPromises.push(
+                fetch(downloadUrl + '&cachebust=' + Date.now() + i, { cache: 'no-store' })
+                    .then(r => r.arrayBuffer())
+                    .then(buf => { totalBytes += buf.byteLength; })
+                    .catch(() => {})
+            );
+        }
+        await Promise.all(dlPromises);
+        const dlTime = (performance.now() - dlStart) / 1000;
+        const dlSpeed = totalBytes > 0 ? ((totalBytes * 8) / dlTime / 1e6).toFixed(1) : '--';
+        downEl.textContent = dlSpeed;
+        document.getElementById('gaugeDown').classList.remove('testing');
+        
+        // Upload test
+        btn.textContent = 'Teste Upload...';
+        document.getElementById('gaugeUp').classList.add('testing');
+        
+        const uploadData = new ArrayBuffer(500000);
+        const ulStart = performance.now();
+        let ulBytes = 0;
+        
+        const ulPromises = [];
+        for (let i = 0; i < 2; i++) {
+            ulPromises.push(
+                fetch('https://speed.cloudflare.com/__up', {
+                    method: 'POST',
+                    body: uploadData,
+                    cache: 'no-store',
+                }).then(() => { ulBytes += uploadData.byteLength; }).catch(() => {})
+            );
+        }
+        await Promise.all(ulPromises);
+        const ulTime = (performance.now() - ulStart) / 1000;
+        const ulSpeed = ulBytes > 0 ? ((ulBytes * 8) / ulTime / 1e6).toFixed(1) : '--';
+        upEl.textContent = ulSpeed;
+        document.getElementById('gaugeUp').classList.remove('testing');
+        
+        btn.textContent = 'Erneut testen';
+        toast(`⚡ ${dlSpeed} Mbps ↓ · ${ulSpeed} Mbps ↑ · ${pingTime}ms`);
+        
+    } catch (err) {
+        console.error('Speed test error:', err);
+        toast('Speed Test fehlgeschlagen');
+        btn.textContent = 'Erneut versuchen';
+    } finally {
+        speedTestRunning = false;
+        btn.disabled = false;
+        document.querySelectorAll('.speed-gauge').forEach(g => g.classList.remove('testing'));
+    }
+}
+
+// ─── Provider Compare ─────────────────────────────────────────
+function toggleComparePanel() {
+    const panel = document.getElementById('comparePanel');
+    const btn = document.getElementById('btnCompare');
+    panel.classList.toggle('open');
+    btn.classList.toggle('active');
+    // Close speed if open
+    document.getElementById('speedPanel').classList.remove('open');
+    document.getElementById('btnSpeed').classList.remove('active');
+    
+    if (panel.classList.contains('open')) {
+        updateComparePanel();
+    }
+}
+
+function updateComparePanel() {
+    const center = map.getCenter();
+    const lat = center.lat;
+    const lng = center.lng;
+    
+    const providers = ['telefonica', 'telekom', 'vodafone'];
+    const results = providers.map(p => {
+        const result = getBestSignalAt(lat, lng, p);
+        const quality = getSignalQuality(result.signal);
+        const towerCount = towers.filter(t => t.opType === p).length;
+        const nearbyCount = towers.filter(t => {
+            if (t.opType !== p) return false;
+            return getDistanceKm(lat, lng, t.lat, t.lon) <= 3;
+        }).length;
+        return { provider: p, ...result, quality, towerCount, nearbyCount };
+    });
+    
+    // Sort by signal strength
+    results.sort((a, b) => b.signal - a.signal);
+    
+    const container = document.getElementById('compareResults');
+    const labels = {
+        telefonica: 'O2 / 1&1',
+        telekom: 'Deutsche Telekom',
+        vodafone: 'Vodafone',
+    };
+    const icons = {
+        telefonica: '📶',
+        telekom: '📶',
+        vodafone: '📶',
+    };
+    
+    container.innerHTML = results.map((r, i) => `
+        <div class="compare-card ${r.provider}">
+            <div class="compare-logo ${r.provider}">${icons[r.provider]}</div>
+            <div class="compare-info">
+                <div class="compare-name">${i === 0 ? '👑 ' : ''}${labels[r.provider]}</div>
+                <div class="compare-detail">${r.nearbyCount} Masten im Umkreis 3km · ${r.tech || '--'}</div>
+            </div>
+            <div class="compare-signal">
+                <div class="compare-dbm" style="color:${r.quality.color}">${r.signal > -130 ? r.signal : '--'}</div>
+                <div class="compare-quality" style="color:${r.quality.color}">${r.quality.label}</div>
+            </div>
+        </div>
+    `).join('');
+    
+    // Recommendation
+    const best = results[0];
+    const worst = results[results.length - 1];
+    if (best.signal > -130) {
+        const diff = best.signal - worst.signal;
+        container.innerHTML += `
+            <div class="compare-recommendation">
+                💡 ${labels[best.provider]} hat hier das stärkste Signal${diff > 10 ? ` (+${diff} dBm vs. ${labels[worst.provider]})` : ''}.
+            </div>
+        `;
+    }
+}
+
 // ─── Geocoding (Nominatim) ────────────────────────────────────
 async function searchLocation(query) {
     if (!query || query.length < 2) {
@@ -497,9 +676,7 @@ async function searchLocation(query) {
     
     try {
         const url = `${CONFIG.nominatimUrl}/search?format=json&q=${encodeURIComponent(query)}&countrycodes=de&limit=5&addressdetails=1`;
-        const response = await fetch(url, {
-            headers: { 'Accept-Language': 'de' }
-        });
+        const response = await fetch(url, { headers: { 'Accept-Language': 'de' } });
         const results = await response.json();
         
         const container = document.getElementById('searchResults');
@@ -566,7 +743,7 @@ function locateUser() {
             updateSignalDisplay(latitude, longitude);
             
             document.getElementById('coordsDisplay').textContent = 
-                `${latitude.toFixed(5)}, ${longitude.toFixed(5)} (±${Math.round(accuracy)}m)`;
+                `${latitude.toFixed(5)}, ${longitude.toFixed(5)} · ±${Math.round(accuracy)}m`;
             
             toast(`Standort gefunden (±${Math.round(accuracy)}m)`);
         },
@@ -585,8 +762,8 @@ function setUserMarker(lat, lng, accuracy) {
     const icon = L.divIcon({
         className: '',
         html: '<div class="user-marker"></div>',
-        iconSize: [16, 16],
-        iconAnchor: [8, 8],
+        iconSize: [14, 14],
+        iconAnchor: [7, 7],
     });
     
     userMarker = L.marker([lat, lng], { icon, zIndexOffset: 2000 }).addTo(map);
@@ -594,8 +771,8 @@ function setUserMarker(lat, lng, accuracy) {
     if (accuracy && accuracy < 5000) {
         userAccuracyCircle = L.circle([lat, lng], {
             radius: accuracy,
-            color: 'rgba(108,92,231,0.4)',
-            fillColor: 'rgba(108,92,231,0.08)',
+            color: 'rgba(99,102,241,0.35)',
+            fillColor: 'rgba(99,102,241,0.06)',
             weight: 1,
         }).addTo(map);
     }
@@ -625,9 +802,9 @@ function handleMeasureClick(latlng) {
     measurePoints.push(latlng);
     
     const dot = L.circleMarker(latlng, {
-        radius: 6,
-        color: '#6c5ce7',
-        fillColor: '#a29bfe',
+        radius: 5,
+        color: '#6366f1',
+        fillColor: '#818cf8',
         fillOpacity: 1,
         weight: 2,
     }).addTo(map);
@@ -641,7 +818,7 @@ function handleMeasureClick(latlng) {
         
         if (measureLine) map.removeLayer(measureLine);
         measureLine = L.polyline(measurePoints, {
-            color: '#a29bfe',
+            color: '#818cf8',
             weight: 2,
             dashArray: '6, 8',
         }).addTo(map);
@@ -654,10 +831,9 @@ function handleMeasureClick(latlng) {
         if (measurePopup) map.closePopup(measurePopup);
         measurePopup = L.popup({ closeOnClick: false, className: '' })
             .setLatLng(mid)
-            .setContent(`<strong style="font-size:14px">${formatDist(dist)}</strong>`)
+            .setContent(`<strong style="font-size:14px;font-family:Inter,sans-serif">${formatDist(dist)}</strong>`)
             .openOn(map);
         
-        // Reset for next measurement
         measurePoints = [];
     }
 }
@@ -676,7 +852,6 @@ function onMapClick(e) {
         handleMeasureClick(e.latlng);
         return;
     }
-    
     updateSignalDisplay(e.latlng.lat, e.latlng.lng);
     document.getElementById('coordsDisplay').textContent = 
         `${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}`;
@@ -695,14 +870,12 @@ function initMap() {
         minZoom: 5,
     });
     
-    // Dark tile layer (CartoDB Dark Matter)
     tileLayerStreet = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
         maxZoom: 20,
         attribution: '© <a href="https://www.openstreetmap.org/copyright">OSM</a> · <a href="https://carto.com/">CARTO</a>',
         subdomains: 'abcd',
     });
     
-    // Satellite layer (ESRI)
     tileLayerSat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
         maxZoom: 19,
         attribution: '© Esri',
@@ -710,7 +883,6 @@ function initMap() {
     
     tileLayerSat.addTo(map);
     
-    // Marker cluster group
     clusterGroup = L.markerClusterGroup({
         maxClusterRadius: 50,
         spiderfyOnMaxZoom: true,
@@ -733,19 +905,14 @@ function initMap() {
     });
     map.addLayer(clusterGroup);
     
-    // Events
     map.on('click', onMapClick);
     
     map.on('moveend', () => {
         if (loadingTimeout) clearTimeout(loadingTimeout);
         loadingTimeout = setTimeout(() => {
             const zoom = map.getZoom();
-            if (zoom >= 9) {
-                loadTowers(map.getBounds().pad(0.3));
-            }
-            if (isHeatmapOn && zoom >= 11) {
-                generateHeatmap();
-            }
+            if (zoom >= 9) loadTowers(map.getBounds().pad(0.3));
+            if (isHeatmapOn && zoom >= 11) generateHeatmap();
         }, 400);
     });
     
@@ -757,9 +924,8 @@ function initMap() {
         const btn = document.getElementById('btnSearch');
         const isOpen = wrap.classList.toggle('open');
         btn.classList.toggle('active', isOpen);
-        if (isOpen) {
-            document.getElementById('searchBox').focus();
-        } else {
+        if (isOpen) document.getElementById('searchBox').focus();
+        else {
             document.getElementById('searchBox').value = '';
             document.getElementById('searchResults').classList.remove('has-results');
         }
@@ -777,7 +943,6 @@ function initMap() {
         }
     });
     
-    // Close search on map click
     map.on('click', () => {
         document.getElementById('searchWrap').classList.remove('open');
         document.getElementById('btnSearch').classList.remove('active');
@@ -786,7 +951,7 @@ function initMap() {
     // Locate
     document.getElementById('btnLocate').addEventListener('click', locateUser);
     
-    // Satellite toggle (starts as satellite, toggles to street and back)
+    // Satellite toggle
     document.getElementById('btnSatellite').addEventListener('click', () => {
         isSatellite = !isSatellite;
         if (isSatellite) {
@@ -803,23 +968,22 @@ function initMap() {
     document.getElementById('btnHeatmap').addEventListener('click', () => {
         isHeatmapOn = !isHeatmapOn;
         document.getElementById('btnHeatmap').classList.toggle('active');
-        if (isHeatmapOn) {
-            generateHeatmap();
-        } else if (heatmapLayer) {
-            map.removeLayer(heatmapLayer);
-            heatmapLayer = null;
-        }
+        if (isHeatmapOn) generateHeatmap();
+        else if (heatmapLayer) { map.removeLayer(heatmapLayer); heatmapLayer = null; }
     });
+    
+    // Speed Test
+    document.getElementById('btnSpeed').addEventListener('click', toggleSpeedPanel);
+    
+    // Compare
+    document.getElementById('btnCompare').addEventListener('click', toggleComparePanel);
     
     // Measure
     document.getElementById('btnMeasure').addEventListener('click', () => {
         isMeasuring = !isMeasuring;
         document.getElementById('btnMeasure').classList.toggle('active');
-        if (!isMeasuring) {
-            clearMeasurements();
-        } else {
-            toast('Tippe 2 Punkte zum Messen');
-        }
+        if (!isMeasuring) clearMeasurements();
+        else toast('Tippe 2 Punkte zum Messen');
     });
     
     // Info
@@ -828,15 +992,13 @@ function initMap() {
     });
     
     document.getElementById('infoModal').addEventListener('click', (e) => {
-        if (e.target === e.currentTarget) {
-            e.currentTarget.classList.remove('open');
-        }
+        if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
     });
     
-    // Filter buttons
-    document.querySelectorAll('.filter-btn').forEach(btn => {
+    // Filter chips
+    document.querySelectorAll('.chip').forEach(btn => {
         btn.addEventListener('click', () => {
-            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.chip').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             activeFilter = btn.dataset.filter;
             renderTowers();
@@ -846,17 +1008,22 @@ function initMap() {
         });
     });
     
-    // Mark satellite + heatmap buttons as active on start
+    // Set initial active states
     document.getElementById('btnSatellite').classList.add('active');
     document.getElementById('btnHeatmap').classList.add('active');
     
-    // Initial load for Viersen area
+    // Apply saved filter
+    if (activeFilter !== 'all') {
+        document.querySelectorAll('.chip').forEach(c => {
+            c.classList.toggle('active', c.dataset.filter === activeFilter);
+        });
+    }
+    
+    // Initial load
     loadTowers(map.getBounds().pad(0.3)).then(() => {
-        // Generate heatmap after initial towers loaded
         if (isHeatmapOn) generateHeatmap();
     });
     
-    // Try to locate user
     locateUser();
     startWatching();
 }
@@ -871,4 +1038,4 @@ if ('serviceWorker' in navigator) {
 }
 
 // ─── Boot ─────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', initMap);
+document.addEventListener('DOMContentLoaded', checkOnboarding);
