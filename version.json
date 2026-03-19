@@ -1,0 +1,7 @@
+{
+    "versionCode": 5,
+    "versionName": "3.2.0",
+    "apkUrl": "https://github.com/PurpleDoubleD/SignalRadar/releases/download/v3.2.0/SignalRadar-v3.2.0.apk",
+    "changelog": "• In-App Auto-Update\n• Neues App Icon\n• Offline-Modus\n• Adaptive Icon",
+    "required": false
+}
