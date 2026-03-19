@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "de.purpledoubled.signalradar",
+    "sha256_cert_fingerprints": ["83:EE:3D:69:CA:3A:3C:B7:63:79:37:9D:4E:16:DE:31:7A:53:9D:BB:2A:13:DD:C5:49:C1:AE:87:B6:14:A7:24"]
+  }
+}]
