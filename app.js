@@ -1,240 +1,343 @@
 // ============================================================
-// SignalRadar - Mobilfunk-Abdeckungskarte für Deutschland
+// SignalRadar v2.0 - Mobilfunk-Abdeckungskarte für Deutschland
+// by PurpleDoubleD
 // ============================================================
 
-// --- Config ---
+'use strict';
+
+// ─── Config ───────────────────────────────────────────────────
 const CONFIG = {
-    defaultCenter: [51.1657, 10.4515], // Mitte Deutschland
-    defaultZoom: 7,
-    maxTowerLoadRadius: 15000, // meters
-    overpassTimeout: 30,
+    // Viersen (41747) als Default-Zentrum
+    defaultCenter: [51.2544, 6.3945],
+    defaultZoom: 12,
+    
+    // Overpass
+    overpassEndpoints: [
+        'https://overpass-api.de/api/interpreter',
+        'https://overpass.kumi.systems/api/interpreter',
+        'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+    ],
+    overpassTimeout: 45,
+    
+    // Signal colors
     signalColors: {
-        excellent: '#00b894', // > -70 dBm
-        good: '#fdcb6e',      // -70 to -85
-        fair: '#e17055',      // -85 to -100
-        poor: '#d63031',      // < -100
-        none: '#636e72',      // no signal
+        excellent: '#2ea043',
+        good: '#56d364',
+        fair: '#d29922',
+        weak: '#e17055',
+        poor: '#f85149',
+        none: '#484f58',
     },
-    // Okumura-Hata model parameters
-    // For suburban/rural (Wald!)
+    
+    // COST 231 Hata parameters
     frequencies: {
-        '5G': 3600,  // MHz
-        '4G': 800,   // MHz (LTE 800 - best for rural)
-        '3G': 2100,  // MHz
-        '2G': 900,   // MHz
+        '5G':  { freq: 3600, eirp: 62 },
+        '4G':  { freq: 800,  eirp: 60 },  // LTE 800 - best rural coverage
+        '3G':  { freq: 2100, eirp: 56 },
+        '2G':  { freq: 900,  eirp: 52 },
     },
-    // Typical tower heights
-    towerHeight: 40, // meters
-    phoneHeight: 1.5, // meters
-    // Vegetation attenuation (dB) - ITU-R recommendation
-    forestAttenuation: 15, // dB extra loss in forest
+    towerHeight: 40,     // meters (default)
+    phoneHeight: 1.5,    // meters
+    forestAttenuation: 15,
+    buildingAttenuation: 12,
+    
+    // Heatmap
+    heatmapResolution: 6,  // pixels per sample point
+    
+    // Nominatim for geocoding
+    nominatimUrl: 'https://nominatim.openstreetmap.org',
 };
 
-// --- State ---
+// ─── State ────────────────────────────────────────────────────
 let map;
-let towerMarkers = L.layerGroup();
+let clusterGroup;
 let heatmapLayer = null;
 let userMarker = null;
+let userAccuracyCircle = null;
 let userPosition = null;
 let towers = [];
+let towerIds = new Set();
 let activeFilter = 'all';
 let isSatellite = false;
 let isHeatmapOn = false;
 let isMeasuring = false;
 let measurePoints = [];
+let measureMarkers = [];
 let measureLine = null;
+let measurePopup = null;
 let tileLayerStreet, tileLayerSat;
-let loadedBounds = null;
+let loadedRegions = [];
 let loadingTimeout = null;
+let currentOverpassIdx = 0;
+let searchDebounce = null;
+let watchId = null;
+let heatmapWorking = false;
 
-// --- Operator classification ---
-function classifyOperator(tags) {
-    const op = (tags.operator || tags['operator:de'] || '').toLowerCase();
-    const network = (tags['communication:mobile_phone'] || tags['network'] || '').toLowerCase();
-    const ref = (tags.ref || '').toLowerCase();
-    
-    if (op.includes('telefonica') || op.includes('o2') || op.includes('eplus') || 
-        op.includes('drillisch') || op.includes('1&1') || op.includes('1und1')) {
-        return 'telefonica';
-    }
-    if (op.includes('telekom') || op.includes('t-mobile') || op.includes('deutsche funkturm')) {
-        return 'telekom';
-    }
-    if (op.includes('vodafone') || op.includes('d2')) {
-        return 'vodafone';
-    }
-    if (op.includes('american tower') || op.includes('vantage')) {
-        // Tower companies host multiple operators - show as "other"
-        return 'other';
-    }
-    // DB Netz, Rundfunk etc - not mobile
-    if (op.includes('db ') || op.includes('rundfunk') || op.includes('broadcasting')) {
-        return 'infrastructure';
-    }
-    return 'other';
+// ─── Utilities ────────────────────────────────────────────────
+function toast(msg, duration = 2500) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), duration);
 }
 
-function getOperatorLabel(type) {
-    const labels = {
-        telefonica: 'O2 / Telefónica (1&1)',
-        telekom: 'Deutsche Telekom',
-        vodafone: 'Vodafone',
-        other: 'Sonstige / Multi-Operator',
-        infrastructure: 'Infrastruktur',
-    };
-    return labels[type] || type;
-}
-
-// --- Signal calculation (Okumura-Hata model) ---
-function calculateSignalStrength(distanceKm, frequencyMHz, isForest = false) {
-    if (distanceKm <= 0) distanceKm = 0.01;
-    
-    // COST 231 Hata Model (suburban/rural)
-    const hb = CONFIG.towerHeight;
-    const hm = CONFIG.phoneHeight;
-    const f = frequencyMHz;
-    const d = distanceKm;
-    
-    // Antenna height correction for mobile (small/medium city)
-    const aHm = (1.1 * Math.log10(f) - 0.7) * hm - (1.56 * Math.log10(f) - 0.8);
-    
-    // Path loss (suburban)
-    let pathLoss = 46.3 + 33.9 * Math.log10(f) - 13.82 * Math.log10(hb) - aHm
-                   + (44.9 - 6.55 * Math.log10(hb)) * Math.log10(d);
-    
-    // Suburban correction
-    pathLoss -= 2 * Math.pow(Math.log10(f / 28), 2) - 5.4;
-    
-    // Forest attenuation
-    if (isForest) {
-        pathLoss += CONFIG.forestAttenuation;
-    }
-    
-    // Typical tower EIRP (effective radiated power) in dBm
-    const eirp = 60; // ~60 dBm for macro cell
-    
-    // Received signal strength
-    const rss = eirp - pathLoss;
-    
-    return Math.round(rss);
-}
-
-function getSignalQuality(dBm) {
-    if (dBm > -70) return { level: 5, label: 'Ausgezeichnet', color: CONFIG.signalColors.excellent, css: 'excellent' };
-    if (dBm > -80) return { level: 4, label: 'Gut', color: CONFIG.signalColors.good, css: 'good' };
-    if (dBm > -90) return { level: 3, label: 'Befriedigend', color: CONFIG.signalColors.good, css: 'good' };
-    if (dBm > -100) return { level: 2, label: 'Schwach', color: CONFIG.signalColors.fair, css: 'fair' };
-    if (dBm > -110) return { level: 1, label: 'Sehr schwach', color: CONFIG.signalColors.poor, css: 'poor' };
-    return { level: 0, label: 'Kein Empfang', color: CONFIG.signalColors.none, css: 'poor' };
-}
-
-function getBestSignalAtPoint(lat, lng, filterOp = 'all') {
-    let bestSignal = -999;
-    let bestTower = null;
-    let bestFreq = '';
-    
-    const filteredTowers = towers.filter(t => {
-        if (filterOp === 'all') return t.opType !== 'infrastructure';
-        return t.opType === filterOp;
-    });
-    
-    for (const tower of filteredTowers) {
-        const dist = getDistanceKm(lat, lng, tower.lat, tower.lon);
-        if (dist > 30) continue; // Skip towers > 30km away
-        
-        // Check if the point is likely in a forest (we'll use a simple heuristic)
-        // In a real app, we'd query OSM landuse data
-        const isForest = false; // Will be enhanced later
-        
-        // Calculate for best frequency (LTE 800 for rural = best penetration)
-        for (const [tech, freq] of Object.entries(CONFIG.frequencies)) {
-            const signal = calculateSignalStrength(dist, freq, isForest);
-            if (signal > bestSignal) {
-                bestSignal = signal;
-                bestTower = tower;
-                bestFreq = tech;
-            }
-        }
-    }
-    
-    return { signal: bestSignal, tower: bestTower, tech: bestFreq };
+function setLoading(on) {
+    document.getElementById('loadingBar').classList.toggle('active', on);
 }
 
 function getDistanceKm(lat1, lon1, lat2, lon2) {
     const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+    const a = Math.sin(dLat / 2) ** 2 +
               Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-              Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
+              Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// --- Load towers from Overpass API ---
-async function loadTowers(bounds) {
-    const loading = document.getElementById('loading');
-    loading.classList.add('show');
+function formatDist(meters) {
+    if (meters < 1000) return `${Math.round(meters)}m`;
+    return `${(meters / 1000).toFixed(1)}km`;
+}
+
+function hexToRgb(hex) {
+    const r = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return r ? { r: parseInt(r[1], 16), g: parseInt(r[2], 16), b: parseInt(r[3], 16) } : { r: 80, g: 80, b: 80 };
+}
+
+// ─── Operator Classification ──────────────────────────────────
+function classifyOperator(tags) {
+    const fields = [
+        tags.operator, tags['operator:de'], tags.name,
+        tags['communication:mobile_phone'], tags.network, tags.ref,
+        tags.description, tags.owner,
+    ].filter(Boolean).map(s => s.toLowerCase()).join(' ');
     
-    const s = bounds.getSouth();
-    const w = bounds.getWest();
-    const n = bounds.getNorth();
-    const e = bounds.getEast();
+    // Telefónica / O2 / 1&1 / Drillisch (all same network)
+    if (/telefonica|telefónica|o2|e[\-\s]?plus|drillisch|1[&u]1|eplus/.test(fields)) return 'telefonica';
     
+    // Deutsche Telekom
+    if (/telekom|t[\-\s]?mobile|deutsche\s*funk|dfmg|dtag/.test(fields)) return 'telekom';
+    
+    // Vodafone
+    if (/vodafone|d2|unitymedia/.test(fields)) return 'vodafone';
+    
+    // Infrastructure companies (multi-operator)
+    if (/american\s*tower|vantage|gip|dfmg/.test(fields)) return 'other';
+    
+    // Non-mobile infrastructure - filter out
+    if (/db\s|rundfunk|broadcast|tetra|bos[\-\s]|polizei|feuerwehr|amateur/.test(fields)) return 'infrastructure';
+    
+    return 'other';
+}
+
+function getOperatorLabel(type) {
+    return {
+        telefonica: 'O2 / Telefónica (1&1)',
+        telekom: 'Deutsche Telekom',
+        vodafone: 'Vodafone',
+        other: 'Sonstige',
+    }[type] || type;
+}
+
+function getOperatorColor(type) {
+    return {
+        telefonica: '#0066cc',
+        telekom: '#e20074',
+        vodafone: '#e60000',
+        other: '#6e7681',
+    }[type] || '#6e7681';
+}
+
+// ─── Signal Calculation (COST 231 Hata) ──────────────────────
+function calculateSignal(distKm, freqMHz, eirp, towerH = CONFIG.towerHeight) {
+    if (distKm <= 0) distKm = 0.01;
+    if (distKm > 35) return -130;
+    
+    const hb = towerH;
+    const hm = CONFIG.phoneHeight;
+    const f = freqMHz;
+    const d = distKm;
+    
+    // Mobile antenna height correction (small/medium city)
+    const aHm = (1.1 * Math.log10(f) - 0.7) * hm - (1.56 * Math.log10(f) - 0.8);
+    
+    // COST 231 Hata path loss (urban)
+    let pathLoss = 46.3 + 33.9 * Math.log10(f) - 13.82 * Math.log10(hb) - aHm
+                   + (44.9 - 6.55 * Math.log10(hb)) * Math.log10(d);
+    
+    // Suburban correction
+    pathLoss -= 2 * (Math.log10(f / 28)) ** 2 - 5.4;
+    
+    // Clutter/fading margin (realistic)
+    pathLoss += 8; // shadow fading margin
+    
+    return Math.round(eirp - pathLoss);
+}
+
+function getSignalQuality(dBm) {
+    if (dBm > -65)  return { level: 5, label: 'Ausgezeichnet', color: CONFIG.signalColors.excellent, css: 'excellent' };
+    if (dBm > -75)  return { level: 4, label: 'Sehr gut',       color: CONFIG.signalColors.good,      css: 'good' };
+    if (dBm > -85)  return { level: 3, label: 'Gut',            color: CONFIG.signalColors.fair,       css: 'fair' };
+    if (dBm > -95)  return { level: 2, label: 'Schwach',        color: CONFIG.signalColors.weak,       css: 'weak' };
+    if (dBm > -110) return { level: 1, label: 'Sehr schwach',   color: CONFIG.signalColors.poor,       css: 'poor' };
+    return { level: 0, label: 'Kein Empfang', color: CONFIG.signalColors.none, css: 'poor' };
+}
+
+function getBestSignalAt(lat, lng, filterOp = 'all') {
+    let bestSignal = -999;
+    let bestTower = null;
+    let bestTech = '';
+    
+    const filtered = towers.filter(t => {
+        if (t.opType === 'infrastructure') return false;
+        if (filterOp === 'all') return true;
+        return t.opType === filterOp;
+    });
+    
+    for (const tower of filtered) {
+        const dist = getDistanceKm(lat, lng, tower.lat, tower.lon);
+        if (dist > 35) continue;
+        
+        // Determine which technologies this tower supports
+        const techs = getTowerTechs(tower);
+        const techsToCalc = techs.length > 0 ? techs : ['4G']; // default assume LTE
+        
+        for (const tech of techsToCalc) {
+            const cfg = CONFIG.frequencies[tech];
+            if (!cfg) continue;
+            const signal = calculateSignal(dist, cfg.freq, cfg.eirp, tower.height);
+            if (signal > bestSignal) {
+                bestSignal = signal;
+                bestTower = tower;
+                bestTech = tech;
+            }
+        }
+    }
+    
+    return { signal: bestSignal, tower: bestTower, tech: bestTech };
+}
+
+function getTowerTechs(tower) {
+    const techs = [];
+    const t = tower.tags;
+    if (t['communication:2g'] === 'yes' || t['communication:gsm'] === 'yes') techs.push('2G');
+    if (t['communication:3g'] === 'yes' || t['communication:umts'] === 'yes') techs.push('3G');
+    if (t['communication:4g'] === 'yes' || t['communication:lte'] === 'yes') techs.push('4G');
+    if (t['communication:5g'] === 'yes' || t['communication:nr'] === 'yes') techs.push('5G');
+    return techs;
+}
+
+// ─── Tower Loading (Overpass API) ─────────────────────────────
+async function loadTowers(bounds, retries = 2) {
+    // Check if already loaded
+    if (isRegionLoaded(bounds)) return;
+    
+    setLoading(true);
+    
+    const s = bounds.getSouth().toFixed(6);
+    const w = bounds.getWest().toFixed(6);
+    const n = bounds.getNorth().toFixed(6);
+    const e = bounds.getEast().toFixed(6);
+    
+    // Enhanced query: get all communication towers + masts + sites
     const query = `[out:json][timeout:${CONFIG.overpassTimeout}];(
         node["man_made"="mast"]["tower:type"="communication"](${s},${w},${n},${e});
         node["communication:mobile_phone"="yes"](${s},${w},${n},${e});
         node["man_made"="tower"]["tower:type"="communication"](${s},${w},${n},${e});
-    );out body;`;
+        way["man_made"="mast"]["tower:type"="communication"](${s},${w},${n},${e});
+        node["telecom"="antenna"](${s},${w},${n},${e});
+        node["man_made"="antenna"](${s},${w},${n},${e});
+        node["man_made"="communications_tower"](${s},${w},${n},${e});
+        node["telecom"="mast"](${s},${w},${n},${e});
+    );out body center;`;
     
-    try {
-        const response = await fetch('https://overpass-api.de/api/interpreter', {
-            method: 'POST',
-            body: 'data=' + encodeURIComponent(query),
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-        });
+    for (let attempt = 0; attempt <= retries; attempt++) {
+        const endpoint = CONFIG.overpassEndpoints[currentOverpassIdx % CONFIG.overpassEndpoints.length];
         
-        const data = await response.json();
-        
-        // Deduplicate by ID
-        const existingIds = new Set(towers.map(t => t.id));
-        const newTowers = [];
-        
-        for (const element of data.elements) {
-            if (existingIds.has(element.id)) continue;
+        try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), CONFIG.overpassTimeout * 1000);
             
-            const tags = element.tags || {};
-            const opType = classifyOperator(tags);
-            
-            newTowers.push({
-                id: element.id,
-                lat: element.lat,
-                lon: element.lon,
-                operator: tags.operator || 'Unbekannt',
-                opType: opType,
-                height: parseFloat(tags.height) || CONFIG.towerHeight,
-                tags: tags,
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                body: 'data=' + encodeURIComponent(query),
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                signal: controller.signal,
             });
+            
+            clearTimeout(timeout);
+            
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            
+            const data = await response.json();
+            
+            let added = 0;
+            for (const el of data.elements) {
+                const id = el.id;
+                if (towerIds.has(id)) continue;
+                
+                const lat = el.lat || (el.center && el.center.lat);
+                const lon = el.lon || (el.center && el.center.lon);
+                if (!lat || !lon) continue;
+                
+                const tags = el.tags || {};
+                const opType = classifyOperator(tags);
+                if (opType === 'infrastructure') continue;
+                
+                towerIds.add(id);
+                towers.push({
+                    id, lat, lon,
+                    operator: tags.operator || tags.name || 'Unbekannt',
+                    opType,
+                    height: parseFloat(tags.height) || parseFloat(tags['tower:height']) || CONFIG.towerHeight,
+                    tags,
+                });
+                added++;
+            }
+            
+            markRegionLoaded(bounds);
+            renderTowers();
+            updateTowerCount();
+            
+            if (added > 0) {
+                toast(`${added} neue Masten geladen`);
+            }
+            
+            setLoading(false);
+            return;
+            
+        } catch (err) {
+            console.warn(`Overpass attempt ${attempt + 1} failed (${endpoint}):`, err.message);
+            currentOverpassIdx++;
+            
+            if (attempt === retries) {
+                toast('Masten konnten nicht geladen werden');
+                setLoading(false);
+            } else {
+                // Brief pause before retry
+                await new Promise(r => setTimeout(r, 1000));
+            }
         }
-        
-        towers = towers.concat(newTowers);
-        renderTowers();
-        
-        document.getElementById('towerCount').textContent = `${towers.filter(t => t.opType !== 'infrastructure').length} Masten`;
-        
-    } catch (err) {
-        console.error('Overpass API error:', err);
-    } finally {
-        loading.classList.remove('show');
     }
 }
 
-// --- Render tower markers ---
+function isRegionLoaded(bounds) {
+    return loadedRegions.some(r => r.contains(bounds));
+}
+
+function markRegionLoaded(bounds) {
+    loadedRegions.push(bounds.pad(0.2));
+    // Keep max 20 regions
+    if (loadedRegions.length > 20) loadedRegions.shift();
+}
+
+// ─── Render Towers ────────────────────────────────────────────
 function renderTowers() {
-    towerMarkers.clearLayers();
+    if (!clusterGroup) return;
+    clusterGroup.clearLayers();
     
     const filtered = towers.filter(t => {
-        if (t.opType === 'infrastructure') return false;
         if (activeFilter === 'all') return true;
         return t.opType === activeFilter;
     });
@@ -243,160 +346,294 @@ function renderTowers() {
         const icon = L.divIcon({
             className: '',
             html: `<div class="tower-marker ${tower.opType}"></div>`,
-            iconSize: [14, 14],
-            iconAnchor: [7, 7],
+            iconSize: [12, 12],
+            iconAnchor: [6, 6],
         });
         
         const marker = L.marker([tower.lat, tower.lon], { icon });
         
-        // Build popup content
-        const techs = [];
-        if (tower.tags['communication:2g'] === 'yes' || tower.tags['communication:gsm'] === 'yes') techs.push('<span class="network-badge n2g">2G</span>');
-        if (tower.tags['communication:3g'] === 'yes' || tower.tags['communication:umts'] === 'yes') techs.push('<span class="network-badge n3g">3G</span>');
-        if (tower.tags['communication:4g'] === 'yes' || tower.tags['communication:lte'] === 'yes') techs.push('<span class="network-badge n4g">4G</span>');
-        if (tower.tags['communication:5g'] === 'yes' || tower.tags['communication:nr'] === 'yes') techs.push('<span class="network-badge n5g">5G</span>');
+        // Popup
+        const techs = getTowerTechs(tower);
+        const techStr = techs.length > 0
+            ? techs.map(t => `<span class="net-badge b${t.toLowerCase()}">${t}</span>`).join(' ')
+            : '<span style="color:var(--text-muted)">nicht angegeben</span>';
         
-        const techStr = techs.length > 0 ? techs.join(' ') : '<span style="color:#888">Unbekannt</span>';
-        
-        const distStr = userPosition 
-            ? `${(getDistanceKm(userPosition.lat, userPosition.lng, tower.lat, tower.lon) * 1000).toFixed(0)}m`
+        const distStr = userPosition
+            ? formatDist(getDistanceKm(userPosition.lat, userPosition.lng, tower.lat, tower.lon) * 1000)
             : '--';
         
         marker.bindPopup(`
             <div class="tower-popup">
-                <div class="tp-title">📡 ${getOperatorLabel(tower.opType)}</div>
-                <div class="tp-row"><span class="tp-label">Betreiber:</span> ${tower.operator}</div>
-                <div class="tp-row"><span class="tp-label">Technologie:</span> ${techStr}</div>
-                <div class="tp-row"><span class="tp-label">Höhe:</span> ${tower.height}m</div>
-                <div class="tp-row"><span class="tp-label">Entfernung:</span> ${distStr}</div>
-                <div class="tp-row"><span class="tp-label">Koordinaten:</span> ${tower.lat.toFixed(5)}, ${tower.lon.toFixed(5)}</div>
+                <div class="tp-header">
+                    <div class="tp-icon ${tower.opType}">📡</div>
+                    <div>
+                        <div class="tp-title">${getOperatorLabel(tower.opType)}</div>
+                        <div class="tp-operator">${tower.operator}</div>
+                    </div>
+                </div>
+                <div class="tp-row"><span class="tp-label">Technologie</span> ${techStr}</div>
+                <div class="tp-row"><span class="tp-label">Masthöhe</span> <span class="tp-value">${tower.height}m</span></div>
+                <div class="tp-row"><span class="tp-label">Entfernung</span> <span class="tp-value">${distStr}</span></div>
+                <div class="tp-row"><span class="tp-label">Koordinaten</span> <span class="tp-value" style="font-size:11px">${tower.lat.toFixed(5)}, ${tower.lon.toFixed(5)}</span></div>
             </div>
-        `, { maxWidth: 280 });
+        `, { maxWidth: 280, className: '' });
         
-        towerMarkers.addLayer(marker);
+        clusterGroup.addLayer(marker);
     }
 }
 
-// --- Heatmap generation ---
+function updateTowerCount() {
+    const count = towers.filter(t => {
+        if (activeFilter === 'all') return true;
+        return t.opType === activeFilter;
+    }).length;
+    document.getElementById('towerCount').innerHTML = `<strong>${count}</strong> Masten`;
+}
+
+// ─── Signal Display ───────────────────────────────────────────
+function updateSignalDisplay(lat, lng) {
+    const result = getBestSignalAt(lat, lng, activeFilter);
+    const quality = getSignalQuality(result.signal);
+    
+    // Bars
+    const bars = document.querySelectorAll('.signal-bar');
+    bars.forEach((bar, i) => {
+        bar.className = 'signal-bar';
+        if (i < quality.level) bar.classList.add('active', quality.css);
+    });
+    
+    // Text
+    const strengthEl = document.getElementById('signalStrength');
+    const detailEl = document.getElementById('signalDetail');
+    const dbmEl = document.getElementById('signalDbm');
+    
+    if (result.tower) {
+        const distM = Math.round(getDistanceKm(lat, lng, result.tower.lat, result.tower.lon) * 1000);
+        strengthEl.textContent = quality.label;
+        strengthEl.style.color = quality.color;
+        detailEl.textContent = `${result.tech} · ${getOperatorLabel(result.tower.opType)} · ${formatDist(distM)}`;
+        dbmEl.innerHTML = `${result.signal}<span class="unit"> dBm</span>`;
+        dbmEl.style.color = quality.color;
+    } else {
+        strengthEl.textContent = 'Kein Signal';
+        strengthEl.style.color = CONFIG.signalColors.none;
+        detailEl.textContent = 'Keine Masten in Reichweite';
+        dbmEl.innerHTML = `--<span class="unit"> dBm</span>`;
+        dbmEl.style.color = CONFIG.signalColors.none;
+    }
+}
+
+// ─── Heatmap ──────────────────────────────────────────────────
 function generateHeatmap() {
     if (heatmapLayer) {
         map.removeLayer(heatmapLayer);
         heatmapLayer = null;
     }
-    
-    if (!isHeatmapOn) return;
-    
-    const bounds = map.getBounds();
-    const size = map.getSize();
-    
-    // Create canvas
-    const canvas = document.createElement('canvas');
-    const resolution = 4; // pixels per calculation point
-    canvas.width = Math.ceil(size.x / resolution);
-    canvas.height = Math.ceil(size.y / resolution);
-    const ctx = canvas.getContext('2d');
-    
-    const imageData = ctx.createImageData(canvas.width, canvas.height);
-    
-    for (let y = 0; y < canvas.height; y++) {
-        for (let x = 0; x < canvas.width; x++) {
-            // Convert pixel to lat/lng
-            const point = map.containerPointToLatLng([x * resolution, y * resolution]);
-            
-            // Get signal at this point
-            const result = getBestSignalAtPoint(point.lat, point.lng, activeFilter);
-            const quality = getSignalQuality(result.signal);
-            
-            // Convert color to RGB
-            const rgb = hexToRgb(quality.color);
-            const idx = (y * canvas.width + x) * 4;
-            
-            if (result.signal > -115) {
-                imageData.data[idx] = rgb.r;
-                imageData.data[idx + 1] = rgb.g;
-                imageData.data[idx + 2] = rgb.b;
-                imageData.data[idx + 3] = 160; // alpha
-            } else {
-                imageData.data[idx + 3] = 0; // transparent = no signal
-            }
-        }
-    }
-    
-    ctx.putImageData(imageData, 0, 0);
-    
-    // Add as image overlay
-    heatmapLayer = L.imageOverlay(canvas.toDataURL(), bounds, {
-        opacity: 0.45,
-        interactive: false,
-    });
-    heatmapLayer.addTo(map);
-}
-
-function hexToRgb(hex) {
-    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    return result ? {
-        r: parseInt(result[1], 16),
-        g: parseInt(result[2], 16),
-        b: parseInt(result[3], 16),
-    } : { r: 128, g: 128, b: 128 };
-}
-
-// --- Update signal display ---
-function updateSignalDisplay(lat, lng) {
-    const result = getBestSignalAtPoint(lat, lng, activeFilter === 'all' ? 'all' : activeFilter);
-    const quality = getSignalQuality(result.signal);
-    
-    // Update bars
-    const bars = document.querySelectorAll('.signal-bar');
-    bars.forEach((bar, i) => {
-        bar.className = 'signal-bar';
-        if (i < quality.level) {
-            bar.classList.add('active', quality.css);
-        }
-    });
-    
-    // Update text
-    const strengthEl = document.getElementById('signalStrength');
-    const detailEl = document.getElementById('signalDetail');
-    
-    if (result.tower) {
-        const distM = Math.round(getDistanceKm(lat, lng, result.tower.lat, result.tower.lon) * 1000);
-        strengthEl.textContent = `${quality.label} (${result.signal} dBm)`;
-        strengthEl.style.color = quality.color;
-        detailEl.textContent = `${result.tech} via ${getOperatorLabel(result.tower.opType)} • ${distM}m entfernt`;
-    } else {
-        strengthEl.textContent = 'Kein Signal';
-        strengthEl.style.color = CONFIG.signalColors.none;
-        detailEl.textContent = 'Keine Masten in Reichweite gefunden';
-    }
-}
-
-// --- Map click handler ---
-function onMapClick(e) {
-    if (isMeasuring) {
-        handleMeasureClick(e.latlng);
+    if (!isHeatmapOn || heatmapWorking) return;
+    if (map.getZoom() < 11) {
+        toast('Zoome näher ran für die Heatmap (≥12)');
         return;
     }
     
-    updateSignalDisplay(e.latlng.lat, e.latlng.lng);
+    heatmapWorking = true;
+    setLoading(true);
     
-    // Update coords display
-    document.getElementById('coordsDisplay').textContent = 
-        `${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}`;
+    // Use requestAnimationFrame to not block UI
+    requestAnimationFrame(() => {
+        try {
+            const bounds = map.getBounds();
+            const size = map.getSize();
+            const res = CONFIG.heatmapResolution;
+            const w = Math.ceil(size.x / res);
+            const h = Math.ceil(size.y / res);
+            
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            const imageData = ctx.createImageData(w, h);
+            
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const point = map.containerPointToLatLng([x * res, y * res]);
+                    const result = getBestSignalAt(point.lat, point.lng, activeFilter);
+                    const quality = getSignalQuality(result.signal);
+                    const rgb = hexToRgb(quality.color);
+                    const idx = (y * w + x) * 4;
+                    
+                    if (result.signal > -115) {
+                        imageData.data[idx]     = rgb.r;
+                        imageData.data[idx + 1] = rgb.g;
+                        imageData.data[idx + 2] = rgb.b;
+                        imageData.data[idx + 3] = 120;
+                    }
+                }
+            }
+            
+            ctx.putImageData(imageData, 0, 0);
+            
+            if (isHeatmapOn) {
+                heatmapLayer = L.imageOverlay(canvas.toDataURL(), bounds, {
+                    opacity: 0.5,
+                    interactive: false,
+                });
+                heatmapLayer.addTo(map);
+            }
+        } catch (e) {
+            console.error('Heatmap error:', e);
+        } finally {
+            heatmapWorking = false;
+            setLoading(false);
+        }
+    });
 }
 
-// --- Measure tool ---
+// ─── Geocoding (Nominatim) ────────────────────────────────────
+async function searchLocation(query) {
+    if (!query || query.length < 2) {
+        document.getElementById('searchResults').classList.remove('has-results');
+        return;
+    }
+    
+    try {
+        const url = `${CONFIG.nominatimUrl}/search?format=json&q=${encodeURIComponent(query)}&countrycodes=de&limit=5&addressdetails=1`;
+        const response = await fetch(url, {
+            headers: { 'Accept-Language': 'de' }
+        });
+        const results = await response.json();
+        
+        const container = document.getElementById('searchResults');
+        container.innerHTML = '';
+        
+        if (results.length === 0) {
+            container.classList.remove('has-results');
+            return;
+        }
+        
+        for (const r of results) {
+            const item = document.createElement('div');
+            item.className = 'search-result-item';
+            
+            const icon = r.type === 'city' || r.type === 'town' ? '🏙️' :
+                         r.type === 'village' ? '🏘️' :
+                         r.type === 'postcode' ? '📮' : '📍';
+            
+            item.innerHTML = `
+                <span class="sr-icon">${icon}</span>
+                <div>
+                    <div class="sr-name">${r.display_name.split(',').slice(0, 2).join(', ')}</div>
+                    <div class="sr-detail">${r.display_name.split(',').slice(2, 4).join(', ')}</div>
+                </div>
+            `;
+            
+            item.addEventListener('click', () => {
+                const lat = parseFloat(r.lat);
+                const lon = parseFloat(r.lon);
+                map.setView([lat, lon], 14);
+                document.getElementById('searchWrap').classList.remove('open');
+                document.getElementById('searchBox').value = '';
+                container.classList.remove('has-results');
+                document.getElementById('btnSearch').classList.remove('active');
+                toast(`📍 ${r.display_name.split(',')[0]}`);
+            });
+            
+            container.appendChild(item);
+        }
+        
+        container.classList.add('has-results');
+        
+    } catch (err) {
+        console.error('Geocoding error:', err);
+    }
+}
+
+// ─── Geolocation ──────────────────────────────────────────────
+function locateUser() {
+    if (!navigator.geolocation) {
+        toast('Geolocation nicht verfügbar');
+        return;
+    }
+    
+    toast('Standort wird ermittelt...');
+    
+    navigator.geolocation.getCurrentPosition(
+        (pos) => {
+            const { latitude, longitude, accuracy } = pos.coords;
+            userPosition = { lat: latitude, lng: longitude };
+            
+            setUserMarker(latitude, longitude, accuracy);
+            map.setView([latitude, longitude], 14);
+            updateSignalDisplay(latitude, longitude);
+            
+            document.getElementById('coordsDisplay').textContent = 
+                `${latitude.toFixed(5)}, ${longitude.toFixed(5)} (±${Math.round(accuracy)}m)`;
+            
+            toast(`Standort gefunden (±${Math.round(accuracy)}m)`);
+        },
+        (err) => {
+            console.error('Geolocation error:', err);
+            toast('Standort konnte nicht ermittelt werden');
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+}
+
+function setUserMarker(lat, lng, accuracy) {
+    if (userMarker) map.removeLayer(userMarker);
+    if (userAccuracyCircle) map.removeLayer(userAccuracyCircle);
+    
+    const icon = L.divIcon({
+        className: '',
+        html: '<div class="user-marker"></div>',
+        iconSize: [16, 16],
+        iconAnchor: [8, 8],
+    });
+    
+    userMarker = L.marker([lat, lng], { icon, zIndexOffset: 2000 }).addTo(map);
+    
+    if (accuracy && accuracy < 5000) {
+        userAccuracyCircle = L.circle([lat, lng], {
+            radius: accuracy,
+            color: 'rgba(108,92,231,0.4)',
+            fillColor: 'rgba(108,92,231,0.08)',
+            weight: 1,
+        }).addTo(map);
+    }
+}
+
+function startWatching() {
+    if (!navigator.geolocation) return;
+    
+    watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+            const { latitude, longitude, accuracy } = pos.coords;
+            userPosition = { lat: latitude, lng: longitude };
+            
+            if (userMarker) userMarker.setLatLng([latitude, longitude]);
+            if (userAccuracyCircle) {
+                userAccuracyCircle.setLatLng([latitude, longitude]);
+                if (accuracy) userAccuracyCircle.setRadius(accuracy);
+            }
+        },
+        () => {},
+        { enableHighAccuracy: true, timeout: 30000, maximumAge: 10000 }
+    );
+}
+
+// ─── Measure Tool ─────────────────────────────────────────────
 function handleMeasureClick(latlng) {
     measurePoints.push(latlng);
     
-    L.circleMarker(latlng, {
-        radius: 5,
+    const dot = L.circleMarker(latlng, {
+        radius: 6,
         color: '#6c5ce7',
-        fillColor: '#6c5ce7',
+        fillColor: '#a29bfe',
         fillOpacity: 1,
+        weight: 2,
     }).addTo(map);
+    measureMarkers.push(dot);
     
-    if (measurePoints.length >= 2) {
+    if (measurePoints.length === 2) {
         const dist = getDistanceKm(
             measurePoints[0].lat, measurePoints[0].lng,
             measurePoints[1].lat, measurePoints[1].lng
@@ -404,18 +641,20 @@ function handleMeasureClick(latlng) {
         
         if (measureLine) map.removeLayer(measureLine);
         measureLine = L.polyline(measurePoints, {
-            color: '#6c5ce7',
-            weight: 3,
-            dashArray: '8, 8',
+            color: '#a29bfe',
+            weight: 2,
+            dashArray: '6, 8',
         }).addTo(map);
         
-        // Show distance
-        const midLat = (measurePoints[0].lat + measurePoints[1].lat) / 2;
-        const midLng = (measurePoints[0].lng + measurePoints[1].lng) / 2;
+        const mid = L.latLng(
+            (measurePoints[0].lat + measurePoints[1].lat) / 2,
+            (measurePoints[0].lng + measurePoints[1].lng) / 2
+        );
         
-        L.popup()
-            .setLatLng([midLat, midLng])
-            .setContent(`<strong>${dist < 1000 ? dist.toFixed(0) + 'm' : (dist/1000).toFixed(2) + 'km'}</strong>`)
+        if (measurePopup) map.closePopup(measurePopup);
+        measurePopup = L.popup({ closeOnClick: false, className: '' })
+            .setLatLng(mid)
+            .setContent(`<strong style="font-size:14px">${formatDist(dist)}</strong>`)
             .openOn(map);
         
         // Reset for next measurement
@@ -423,124 +662,131 @@ function handleMeasureClick(latlng) {
     }
 }
 
-// --- Geolocation ---
-function locateUser() {
-    if (!navigator.geolocation) {
-        alert('Geolocation wird von deinem Browser nicht unterstützt.');
+function clearMeasurements() {
+    measureMarkers.forEach(m => map.removeLayer(m));
+    measureMarkers = [];
+    if (measureLine) { map.removeLayer(measureLine); measureLine = null; }
+    if (measurePopup) { map.closePopup(measurePopup); measurePopup = null; }
+    measurePoints = [];
+}
+
+// ─── Map Click ────────────────────────────────────────────────
+function onMapClick(e) {
+    if (isMeasuring) {
+        handleMeasureClick(e.latlng);
         return;
     }
     
-    navigator.geolocation.getCurrentPosition(
-        (pos) => {
-            const { latitude, longitude, accuracy } = pos.coords;
-            userPosition = { lat: latitude, lng: longitude };
-            
-            if (userMarker) map.removeLayer(userMarker);
-            
-            const icon = L.divIcon({
-                className: '',
-                html: '<div class="user-marker"></div>',
-                iconSize: [18, 18],
-                iconAnchor: [9, 9],
-            });
-            
-            userMarker = L.marker([latitude, longitude], { icon, zIndexOffset: 1000 });
-            userMarker.addTo(map);
-            
-            // Add accuracy circle
-            L.circle([latitude, longitude], {
-                radius: accuracy,
-                color: '#6c5ce7',
-                fillColor: '#6c5ce7',
-                fillOpacity: 0.1,
-                weight: 1,
-            }).addTo(map);
-            
-            map.setView([latitude, longitude], 14);
-            
-            updateSignalDisplay(latitude, longitude);
-            document.getElementById('coordsDisplay').textContent = 
-                `${latitude.toFixed(5)}, ${longitude.toFixed(5)} (±${Math.round(accuracy)}m)`;
-        },
-        (err) => {
-            console.error('Geolocation error:', err);
-            alert('Standort konnte nicht ermittelt werden: ' + err.message);
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
+    updateSignalDisplay(e.latlng.lat, e.latlng.lng);
+    document.getElementById('coordsDisplay').textContent = 
+        `${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}`;
 }
 
-// --- Watch position (continuous) ---
-function watchPosition() {
-    if (!navigator.geolocation) return;
-    
-    navigator.geolocation.watchPosition(
-        (pos) => {
-            const { latitude, longitude } = pos.coords;
-            userPosition = { lat: latitude, lng: longitude };
-            
-            if (userMarker) {
-                userMarker.setLatLng([latitude, longitude]);
-            }
-            
-            updateSignalDisplay(latitude, longitude);
-        },
-        () => {},
-        { enableHighAccuracy: true, timeout: 30000, maximumAge: 5000 }
-    );
-}
-
-// --- Initialize map ---
+// ─── Initialize ───────────────────────────────────────────────
 function initMap() {
     map = L.map('map', {
         center: CONFIG.defaultCenter,
         zoom: CONFIG.defaultZoom,
         zoomControl: false,
         attributionControl: true,
-    });
-    
-    // Street layer (default)
-    tileLayerStreet = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        zoomSnap: 0.5,
+        zoomDelta: 0.5,
         maxZoom: 19,
-        attribution: '© OpenStreetMap'
+        minZoom: 5,
     });
     
-    // Satellite layer
+    // Dark tile layer (CartoDB Dark Matter)
+    tileLayerStreet = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        maxZoom: 20,
+        attribution: '© <a href="https://www.openstreetmap.org/copyright">OSM</a> · <a href="https://carto.com/">CARTO</a>',
+        subdomains: 'abcd',
+    });
+    
+    // Satellite layer (ESRI)
     tileLayerSat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
         maxZoom: 19,
-        attribution: '© Esri'
+        attribution: '© Esri',
     });
     
     tileLayerStreet.addTo(map);
-    towerMarkers.addTo(map);
     
-    // Event handlers
+    // Marker cluster group
+    clusterGroup = L.markerClusterGroup({
+        maxClusterRadius: 50,
+        spiderfyOnMaxZoom: true,
+        showCoverageOnHover: false,
+        zoomToBoundsOnClick: true,
+        disableClusteringAtZoom: 16,
+        animate: true,
+        animateAddingMarkers: false,
+        iconCreateFunction: function(cluster) {
+            const count = cluster.getChildCount();
+            let size = 'small';
+            if (count > 50) size = 'large';
+            else if (count > 20) size = 'medium';
+            return L.divIcon({
+                html: `<div>${count}</div>`,
+                className: `marker-cluster marker-cluster-${size}`,
+                iconSize: L.point(36, 36),
+            });
+        },
+    });
+    map.addLayer(clusterGroup);
+    
+    // Events
     map.on('click', onMapClick);
     
     map.on('moveend', () => {
         if (loadingTimeout) clearTimeout(loadingTimeout);
         loadingTimeout = setTimeout(() => {
             const zoom = map.getZoom();
-            if (zoom >= 10) { // Only load towers when zoomed in enough
-                const bounds = map.getBounds();
-                // Check if we need to load more
-                if (!loadedBounds || !loadedBounds.contains(bounds)) {
-                    loadTowers(bounds.pad(0.3)); // Load 30% extra around viewport
-                    loadedBounds = bounds.pad(0.5);
-                }
+            if (zoom >= 9) {
+                loadTowers(map.getBounds().pad(0.3));
             }
-            
-            if (isHeatmapOn && zoom >= 12) {
+            if (isHeatmapOn && zoom >= 11) {
                 generateHeatmap();
             }
-        }, 500);
+        }, 400);
     });
     
-    // Button handlers
-    document.getElementById('btnLocate').addEventListener('click', () => {
-        locateUser();
+    // ─── Button handlers ──────────────────────────────────────
+    
+    // Search
+    document.getElementById('btnSearch').addEventListener('click', () => {
+        const wrap = document.getElementById('searchWrap');
+        const btn = document.getElementById('btnSearch');
+        const isOpen = wrap.classList.toggle('open');
+        btn.classList.toggle('active', isOpen);
+        if (isOpen) {
+            document.getElementById('searchBox').focus();
+        } else {
+            document.getElementById('searchBox').value = '';
+            document.getElementById('searchResults').classList.remove('has-results');
+        }
     });
     
+    document.getElementById('searchBox').addEventListener('input', (e) => {
+        clearTimeout(searchDebounce);
+        searchDebounce = setTimeout(() => searchLocation(e.target.value), 350);
+    });
+    
+    document.getElementById('searchBox').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            searchLocation(e.target.value);
+        }
+    });
+    
+    // Close search on map click
+    map.on('click', () => {
+        document.getElementById('searchWrap').classList.remove('open');
+        document.getElementById('btnSearch').classList.remove('active');
+    });
+    
+    // Locate
+    document.getElementById('btnLocate').addEventListener('click', locateUser);
+    
+    // Satellite
     document.getElementById('btnSatellite').addEventListener('click', () => {
         isSatellite = !isSatellite;
         if (isSatellite) {
@@ -553,6 +799,7 @@ function initMap() {
         document.getElementById('btnSatellite').classList.toggle('active');
     });
     
+    // Heatmap
     document.getElementById('btnHeatmap').addEventListener('click', () => {
         isHeatmapOn = !isHeatmapOn;
         document.getElementById('btnHeatmap').classList.toggle('active');
@@ -564,13 +811,25 @@ function initMap() {
         }
     });
     
+    // Measure
     document.getElementById('btnMeasure').addEventListener('click', () => {
         isMeasuring = !isMeasuring;
         document.getElementById('btnMeasure').classList.toggle('active');
-        measurePoints = [];
-        if (measureLine) {
-            map.removeLayer(measureLine);
-            measureLine = null;
+        if (!isMeasuring) {
+            clearMeasurements();
+        } else {
+            toast('Tippe 2 Punkte zum Messen');
+        }
+    });
+    
+    // Info
+    document.getElementById('btnInfo').addEventListener('click', () => {
+        document.getElementById('infoModal').classList.add('open');
+    });
+    
+    document.getElementById('infoModal').addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) {
+            e.currentTarget.classList.remove('open');
         }
     });
     
@@ -581,17 +840,21 @@ function initMap() {
             btn.classList.add('active');
             activeFilter = btn.dataset.filter;
             renderTowers();
+            updateTowerCount();
             if (isHeatmapOn) generateHeatmap();
             if (userPosition) updateSignalDisplay(userPosition.lat, userPosition.lng);
         });
     });
     
-    // Try to get user location on startup
+    // Initial load for Viersen area
+    loadTowers(map.getBounds().pad(0.3));
+    
+    // Try to locate user
     locateUser();
-    watchPosition();
+    startWatching();
 }
 
-// --- Service Worker Registration (PWA) ---
+// ─── Service Worker ───────────────────────────────────────────
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('sw.js').catch(err => {
@@ -600,5 +863,5 @@ if ('serviceWorker' in navigator) {
     });
 }
 
-// --- Init ---
+// ─── Boot ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', initMap);

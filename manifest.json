@@ -2,23 +2,40 @@
     "name": "SignalRadar",
     "short_name": "SignalRadar",
     "description": "Mobilfunk-Abdeckungskarte für Deutschland - Finde heraus wo du Empfang hast",
-    "start_url": "/",
+    "start_url": "/SignalRadar/",
+    "scope": "/SignalRadar/",
+    "id": "/SignalRadar/",
     "display": "standalone",
-    "orientation": "portrait",
-    "background_color": "#1a1a2e",
-    "theme_color": "#1a1a2e",
+    "orientation": "portrait-primary",
+    "background_color": "#0d1117",
+    "theme_color": "#0d1117",
+    "categories": ["utilities", "navigation"],
+    "lang": "de-DE",
+    "dir": "ltr",
     "icons": [
         {
             "src": "icons/icon-192.png",
             "sizes": "192x192",
             "type": "image/png",
-            "purpose": "any maskable"
+            "purpose": "any"
         },
         {
             "src": "icons/icon-512.png",
             "sizes": "512x512",
             "type": "image/png",
-            "purpose": "any maskable"
+            "purpose": "any"
+        },
+        {
+            "src": "icons/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "icons/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
         }
     ]
 }
